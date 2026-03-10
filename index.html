@@ -38,6 +38,7 @@ body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#
 .role-badge{font-size:11px;padding:3px 9px;border-radius:5px;font-weight:600}
 .role-hr{background:rgba(168,85,247,0.2);color:#c084fc;border:1px solid rgba(168,85,247,0.3)}
 .role-mgmt{background:rgba(59,130,246,0.2);color:#93c5fd;border:1px solid rgba(59,130,246,0.3)}
+.role-viewer{background:rgba(16,185,129,0.2);color:#6ee7b7;border:1px solid rgba(16,185,129,0.3)}
 
 /* MAIN */
 .main{padding:20px 16px;max-width:1100px;margin:0 auto}
@@ -295,10 +296,14 @@ const USERS = {
   "קידוח":   { role: "manager", dept: "קידוח" },
   "רשת ואגריגטים":   { role: "manager", dept: "רשת ואגריגטים" },
   "שרות שדה":   { role: "manager", dept: "שרות שדה" },
+  "sagi":  { role: "viewer", dept: null },
+  "ofer":  { role: "viewer", dept: null },
+  "anat":  { role: "viewer", dept: null },
 };
 const PASSWORDS = {
   "hr":      "orlyhr26",
   "manager": "2026",
+  "viewer":  (u) => u + "cp26",
 };
 
 // ── State ────────────────────────────────────────────────────────────────
@@ -341,20 +346,28 @@ window.doLogin = async function() {
   const pw       = document.getElementById('pwInput').value;
   const user     = USERS[username];
   if (!user) { document.getElementById('loginErr').textContent = 'שם משתמש לא קיים'; return; }
-  if (pw !== PASSWORDS[user.role]) { document.getElementById('loginErr').textContent = 'סיסמה שגויה'; return; }
+  const pwRule = PASSWORDS[user.role];
+  const pwOk = typeof pwRule === 'function' ? pw === pwRule(username) : pw === pwRule;
+  if (!pwOk) { document.getElementById('loginErr').textContent = 'סיסמה שגויה'; return; }
   currentRole = user.role;
   currentDept = user.dept;
   await loadData();
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('appScreen').style.display   = 'block';
   const rb = document.getElementById('roleBadge');
-  rb.textContent = currentRole === 'hr' ? '👩‍💼 משאבי אנוש' : `👷 ${currentDept}`;
-  rb.className   = 'role-badge ' + (currentRole === 'hr' ? 'role-hr' : 'role-mgmt');
+  rb.textContent = currentRole === 'hr' ? '👩‍💼 משאבי אנוש' : currentRole === 'viewer' ? '👁️ צפייה בלבד' : `👷 ${currentDept}`;
+  rb.className   = 'role-badge ' + (currentRole === 'hr' ? 'role-hr' : currentRole === 'viewer' ? 'role-viewer' : 'role-mgmt');
   if (currentRole === 'hr') {
     document.getElementById('submitPanel').style.display  = 'block';
     document.getElementById('empControls').style.display  = 'block';
     document.getElementById('hrStatsPanel').style.display = 'block';
     document.getElementById('hrActionsPanel').style.display = 'block';
+  }
+  if (currentRole === 'viewer') {
+    document.getElementById('submitPanel').style.display  = 'none';
+    document.getElementById('empControls').style.display  = 'none';
+    document.getElementById('hrStatsPanel').style.display = 'block';
+    document.getElementById('hrActionsPanel').style.display = 'none';
   }
   document.getElementById('totalEmp').textContent = EMPLOYEES.length;
   document.getElementById('headerDate').textContent =
@@ -423,7 +436,8 @@ function renderDepts() {
   document.getElementById('deptSubtitle').textContent =
     `${DEPARTMENTS.length} מחלקות · ${EMPLOYEES.length} עובדים`;
   const isHR = currentRole === 'hr';
-  const visibleDepts = isHR ? DEPARTMENTS : DEPARTMENTS.filter(d => d === currentDept);
+  const isViewer = currentRole === 'viewer';
+  const visibleDepts = (isHR || isViewer) ? DEPARTMENTS : DEPARTMENTS.filter(d => d === currentDept);
   document.getElementById('deptGrid').innerHTML = visibleDepts.map(dept => {
     const stats = getDeptStats(dept, isHR);
     const sub   = isHR && stats.isSubmitted
@@ -443,6 +457,14 @@ window.openDept = function(dept) {
   const sb = document.getElementById('searchBox');
   if (sb) sb.value = '';
   document.getElementById('empDeptTitle').textContent = dept;
+  // viewer: hide action panels
+  if (currentRole === 'viewer') {
+    document.getElementById('submitPanel').style.display  = 'none';
+    document.getElementById('empControls').style.display  = 'none';
+  } else {
+    document.getElementById('submitPanel').style.display  = 'block';
+    document.getElementById('empControls').style.display  = 'block';
+  }
   showPage('emp');
 };
 
@@ -450,10 +472,11 @@ window.openDept = function(dept) {
 window.renderEmployees = function() {
   if (!currentDept) return;
   const isHR = currentRole === 'hr';
+  const isViewer = currentRole === 'viewer';
 
   // Decide data source: HR always uses live attendance (can edit everything)
   let sourceData = attendance;
-  let isReadonly = false;
+  let isReadonly = isViewer;
   if (isHR && submitted[currentDept]) {
     sourceData = submitted[currentDept].attendance || {};
     // HR can still edit - merge submitted into attendance if not already set
@@ -511,6 +534,7 @@ window.renderEmployees = function() {
 };
 
 window.toggleEmp = async function(id) {
+  if (currentRole === 'viewer') { toast('👁️ מצב צפייה בלבד — עריכה אינה מורשית'); return; }
   if (dayClosedAt && currentRole !== 'hr') { toast('⛔ יום העבודה נסגר'); return; }
   attendance[id] = !attendance[id];
   await saveDraft();
