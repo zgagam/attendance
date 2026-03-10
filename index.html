@@ -562,12 +562,16 @@ window.closeDay = async function() {
   if (!confirm(msg)) return;
   dayClosedAt = new Date().toISOString();
   await saveDayClosed(dayClosedAt);
-  const btn = document.getElementById('btnCloseDay');
-  btn.textContent = `🔒 יום נסגר ב-${timeStr(dayClosedAt)}`;
-  btn.classList.add('closed');
-  btn.onclick = null;
-  document.getElementById('dayClosedBanner').style.display = 'block';
+  renderSummary();
   toast('🔒 יום העבודה נסגר בהצלחה');
+};
+
+window.reopenDay = async function() {
+  if (!confirm('האם לפתוח מחדש את יום העבודה? מנהלי מחלקות יוכלו לשנות דיווחים.')) return;
+  dayClosedAt = null;
+  await saveDayClosed(null);
+  renderSummary();
+  toast('🔓 יום העבודה נפתח מחדש');
 };
 
 // ── Export Excel ──────────────────────────────────────────────────────────
@@ -615,11 +619,26 @@ function renderSummary() {
       btn.classList.add('closed');
       btn.onclick = null;
       banner.style.display = 'block';
+      // הוסף כפתור פתיחה מחדש אם לא קיים
+      let reopenBtn = document.getElementById('btnReopenDay');
+      if (!reopenBtn) {
+        reopenBtn = document.createElement('button');
+        reopenBtn.id = 'btnReopenDay';
+        reopenBtn.className = 'btn-close-day';
+        reopenBtn.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
+        reopenBtn.style.marginRight = '8px';
+        btn.parentNode.insertBefore(reopenBtn, btn);
+      }
+      reopenBtn.textContent = '🔓 פתח יום מחדש';
+      reopenBtn.onclick = reopenDay;
+      reopenBtn.style.display = 'inline-block';
     } else {
       btn.textContent = '🔒 סגירת יום עבודה';
       btn.classList.remove('closed');
       btn.onclick = closeDay;
       banner.style.display = 'none';
+      const reopenBtn = document.getElementById('btnReopenDay');
+      if (reopenBtn) reopenBtn.style.display = 'none';
     }
     const submittedCount = Object.keys(submitted).length;
     let totalPresent = 0, totalAbsent = 0;
