@@ -122,6 +122,15 @@ body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#
 
 .empty{text-align:center;color:#475569;padding:40px 0;font-size:14px;grid-column:1/-1}
 
+/* HR Actions */
+.hr-actions{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+.btn-close-day{padding:11px 22px;border-radius:9px;border:none;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;white-space:nowrap;box-shadow:0 4px 14px rgba(245,158,11,0.35);transition:all 0.2s}
+.btn-close-day:hover{opacity:0.9;transform:translateY(-1px)}
+.btn-close-day.closed{background:linear-gradient(135deg,#64748b,#475569);box-shadow:none;cursor:default}
+.btn-excel{padding:11px 22px;border-radius:9px;border:none;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;white-space:nowrap;box-shadow:0 4px 14px rgba(22,163,74,0.35);transition:all 0.2s}
+.btn-excel:hover{opacity:0.9;transform:translateY(-1px)}
+.day-closed-banner{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:12px 18px;margin-bottom:16px;font-size:13px;color:#fbbf24;display:none}
+
 /* Toast */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1e293b;border:1px solid rgba(74,222,128,0.4);border-radius:10px;padding:12px 22px;font-size:14px;color:#4ade80;z-index:9999;transition:transform 0.3s ease;white-space:nowrap}
 .toast.show{transform:translateX(-50%) translateY(0)}
@@ -221,6 +230,13 @@ body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#
     <!-- SUMMARY -->
     <div class="page" id="pageSummary">
       <div style="font-size:18px;font-weight:700;margin-bottom:16px;color:#f1f5f9;">📊 סיכום נוכחות</div>
+      <div id="hrActionsPanel" style="display:none">
+        <div class="day-closed-banner" id="dayClosedBanner">🔒 יום העבודה נסגר — לא ניתן לבצע שינויים נוספים</div>
+        <div class="hr-actions">
+          <button class="btn-close-day" id="btnCloseDay" onclick="closeDay()">🔒 סגירת יום עבודה</button>
+          <button class="btn-excel" onclick="exportExcel()">📥 הורד דוח Excel</button>
+        </div>
+      </div>
       <div id="hrStatsPanel" style="display:none">
         <div class="hr-stats" id="hrStats"></div>
         <div style="font-size:13px;color:#64748b;margin-bottom:12px;">
@@ -235,37 +251,33 @@ body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#
 
 <div class="toast" id="toast"></div>
 
-<script type="module">
-// ── Firebase ──────────────────────────────────────────────────────────────
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+// ── Firebase Config ───────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyD_FLjRR0Su89VaUNUX9b539OQBQZAYNLc",
   authDomain: "attendance-2026-207e3.firebaseapp.com",
+  databaseURL: "https://attendance-2026-207e3-default-rtdb.firebaseio.com",
   projectId: "attendance-2026-207e3",
   storageBucket: "attendance-2026-207e3.firebasestorage.app",
   messagingSenderId: "689625407938",
-  appId: "1:689625407938:web:a6e299674a02d2c311f65b",
-  measurementId: "G-J6FYMHPLEV",
-  databaseURL: "https://attendance-2026-207e3-default-rtdb.firebaseio.com"
+  appId: "1:689625407938:web:a6e299674a02d2c311f65b"
 };
-
-const fbApp = initializeApp(firebaseConfig);
-const db    = getDatabase(fbApp);
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
 async function storageGet(key) {
   try {
-    const snapshot = await get(ref(db, key));
-    return snapshot.exists() ? snapshot.val() : null;
-  } catch(e) { console.error('storageGet error', e); return null; }
+    const snap = await db.ref(key).get();
+    return snap.exists() ? snap.val() : null;
+  } catch(e) { console.error('FB get error', e); return null; }
 }
-
 async function storageSet(key, val) {
-  try {
-    await set(ref(db, key), val);
-  } catch(e) { console.error('storageSet error', e); }
+  try { await db.ref(key).set(val); } catch(e) { console.error('FB set error', e); }
 }
+</script>
+<script>
 
 // ── Data ──────────────────────────────────────────────────────────────────
 const EMPLOYEES = [{"id":102,"last_name":"שללאשוילי","first_name":"מירי","department":"הנהח\"ש"},{"id":129,"last_name":"ראשד","first_name":"ירון","department":"מפעל רוחבי"},{"id":134,"last_name":"לבטמן","first_name":"פאינה","department":"תפ\"י"},{"id":167,"last_name":"חגבי","first_name":"רזיאל","department":"משרד"},{"id":226,"last_name":"סבונוב","first_name":"יבגני","department":"מכונות"},{"id":281,"last_name":"בויאנובר","first_name":"ילנה","department":"רכש"},{"id":334,"last_name":"אהרונוב","first_name":"ולדמיר","department":"טרומי דרומי"},{"id":339,"last_name":"גרינשפון","first_name":"אירנה","department":"הנהח\"ש"},{"id":340,"last_name":"גטו","first_name":"אגנצ'ה","department":"טרומי דרומי"},{"id":341,"last_name":"מנגיסטו","first_name":"ווסן","department":"טרומי צפוני"},{"id":384,"last_name":"אלוני","first_name":"דוד","department":"מכירות"},{"id":405,"last_name":"בן גיאת","first_name":"חיים","department":"קידוח"},{"id":441,"last_name":"קליצקי","first_name":"סרגיי","department":"מכונות"},{"id":447,"last_name":"סנצ'ורוב","first_name":"ניקולא","department":"טרומי דרומי"},{"id":449,"last_name":"טקלה","first_name":"דרבה","department":"מכונות"},{"id":469,"last_name":"כרמי","first_name":"עמנואל","department":"מכירות"},{"id":492,"last_name":"פרדה","first_name":"רישאן רבקה","department":"משרד"},{"id":512,"last_name":"ליבשיץ","first_name":"דוד","department":"חצר"},{"id":525,"last_name":"כהן","first_name":"דביר","department":"חצר"},{"id":534,"last_name":"שלומאי","first_name":"משה","department":"מנהלה - נוי"},{"id":559,"last_name":"בשארי","first_name":"שלום","department":"שרות שדה"},{"id":562,"last_name":"אסרף","first_name":"יוסף","department":"רשת ואגריגטים"},{"id":581,"last_name":"חוחלוב","first_name":"ניקולאי","department":"טרומי דרומי"},{"id":587,"last_name":"אלבז","first_name":"פנחס","department":"מכירות"},{"id":604,"last_name":"כרמי","first_name":"שמואל","department":"מפעל רוחבי"},{"id":614,"last_name":"לוי","first_name":"אייל","department":"משלוחים"},{"id":616,"last_name":"נגה","first_name":"טבבו","department":"מכונות"},{"id":621,"last_name":"אלמייהו","first_name":"מלסה","department":"טרומי צפוני"},{"id":626,"last_name":"לוין","first_name":"אלכסנדר","department":"מכונות"},{"id":640,"last_name":"אסרף","first_name":"אברהם","department":"אחזקה"},{"id":647,"last_name":"נידם","first_name":"משה","department":"מכירות"},{"id":648,"last_name":"כהן","first_name":"נתן","department":"מכונות"},{"id":665,"last_name":"אסנקה","first_name":"פקאדו","department":"טרומי דרומי"},{"id":690,"last_name":"מלכה","first_name":"ארז","department":"מכונות"},{"id":701,"last_name":"רביבו","first_name":"ליאור","department":"מכירות"},{"id":702,"last_name":"בר צבי","first_name":"שגיא","department":"משרד"},{"id":704,"last_name":"רדצ'נקו","first_name":"מיכאל","department":"מכונות"},{"id":709,"last_name":"פינטה","first_name":"וורטאו","department":"טרומי צפוני"},{"id":22656,"last_name":"פרדי","first_name":"אתי","department":"משרד"},{"id":22742,"last_name":"אהרון","first_name":"יניב","department":"תפ\"י"},{"id":23170,"last_name":"ברעם","first_name":"עופר","department":"מוצרי בטון"},{"id":23882,"last_name":"סולימאן","first_name":"שלמה","department":"אחזקה"},{"id":24050,"last_name":"אביב","first_name":"דוד","department":"בטיחות"},{"id":1282584,"last_name":"עמירה","first_name":"שאול","department":"שרות שדה"},{"id":1283638,"last_name":"איסקנדרוב","first_name":"ארקדי","department":"מכונות"},{"id":1283639,"last_name":"טקלה","first_name":"מולט","department":"מכונות"},{"id":1283807,"last_name":"שטרק","first_name":"שי","department":"מוצרי בטון"},{"id":1283875,"last_name":"עובדיה","first_name":"שאלתיאל","department":"רשת ואגריגטים"},{"id":1283954,"last_name":"ג'אבר","first_name":"כאמל","department":"מכונות"},{"id":1285730,"last_name":"יוסף","first_name":"נוי","department":"משלוחים"},{"id":1285757,"last_name":"מתנה","first_name":"דן","department":"חצר"},{"id":1285786,"last_name":"איברהים","first_name":"מוחמד","department":"מכונות"},{"id":1285790,"last_name":"חמדון","first_name":"עלי","department":"מכונות"},{"id":1285856,"last_name":"קעטבי","first_name":"רועי","department":"תפ\"י"},{"id":1285878,"last_name":"קוצ'ייב","first_name":"יגאל","department":"מכונות"},{"id":1285938,"last_name":"מושיאשוילי","first_name":"ריקי","department":"הנהח\"ש"},{"id":1285957,"last_name":"גמלפרב","first_name":"ננולי","department":"מנהלה - נוי"},{"id":1285988,"last_name":"קוצ'ייב","first_name":"דני","department":"מכונות"},{"id":1286014,"last_name":"יצחק","first_name":"יוגב","department":"שרות שדה"},{"id":1286068,"last_name":"כץ","first_name":"דניאל דמיטרי","department":"אחזקה"},{"id":1286113,"last_name":"סימיאן","first_name":"גיל","department":"שפיה"},{"id":1286132,"last_name":"בן עלי","first_name":"עופר","department":"מכירות"},{"id":1286165,"last_name":"ברנע","first_name":"דור","department":"שפיה"},{"id":1286168,"last_name":"לוי","first_name":"אלון","department":"מפעל רוחבי"},{"id":1286205,"last_name":"כהן","first_name":"צחי","department":"תפ\"י"},{"id":1286209,"last_name":"מיכאל","first_name":"לאה","department":"הנהח\"ש"},{"id":1286327,"last_name":"כהן","first_name":"יניב","department":"חצר"},{"id":1286382,"last_name":"מז'רה","first_name":"איגור","department":"שפיה"},{"id":1286397,"last_name":"גל","first_name":"שחר","department":"שפיה"},{"id":1286423,"last_name":"פופיק","first_name":"ליליה","department":"לוגסטיקה - נוי"},{"id":1286461,"last_name":"לישצוק","first_name":"פבל","department":"אחזקה - נוי"},{"id":1286462,"last_name":"זיתון","first_name":"פיליפ","department":"ייצור- נוי"},{"id":1286468,"last_name":"סטון","first_name":"לזרו","department":"טרומי צפוני"},{"id":1286469,"last_name":"נעים","first_name":"ציון","department":"קידוח"},{"id":1286470,"last_name":"מצרפי","first_name":"עומרי","department":"אחזקה"},{"id":1286484,"last_name":"מינקוב","first_name":"קונסטנטין","department":"אחזקה - נוי"},{"id":1286485,"last_name":"זקן","first_name":"איתמר","department":"מוצרי בטון"},{"id":1286486,"last_name":"זריפוב","first_name":"ודים","department":"אחזקה - נוי"},{"id":1286489,"last_name":"פופוב","first_name":"גנאדי","department":"אחזקה - נוי"},{"id":1286490,"last_name":"פירוגוב","first_name":"אלכסנדר","department":"אחזקה - נוי"},{"id":1286491,"last_name":"צביבק","first_name":"איגור","department":"אחזקה - נוי"},{"id":1286492,"last_name":"קרקיאן","first_name":"אדוארד","department":"אחזקה - נוי"},{"id":1286495,"last_name":"פלדשר","first_name":"אירנה","department":"אבטחת איכות-נתיבי נו"},{"id":1286496,"last_name":"קסבצ'וק","first_name":"דמיטרי","department":"ייצור- נוי"},{"id":1286497,"last_name":"גדילוב","first_name":"אלברט","department":"ייצור- נוי"},{"id":1286498,"last_name":"אלייב","first_name":"רוסלן","department":"לוגסטיקה - נוי"},{"id":1286501,"last_name":"נלסון","first_name":"יבגני","department":"ייצור- נוי"},{"id":1286502,"last_name":"גונטמכר","first_name":"דניס","department":"ייצור- נוי"},{"id":1286503,"last_name":"סליוסר","first_name":"יורי","department":"ייצור- נוי"},{"id":1286505,"last_name":"קטנה","first_name":"סרגיי","department":"ייצור- נוי"},{"id":1286506,"last_name":"אשורוב","first_name":"פנחס","department":"ייצור- נוי"},{"id":1286507,"last_name":"סילקין","first_name":"קונסטנטין","department":"ייצור- נוי"},{"id":1286508,"last_name":"קופצוב","first_name":"וסילי","department":"ייצור- נוי"},{"id":1286513,"last_name":"ולסוב","first_name":"דניס","department":"ייצור- נוי"},{"id":1286515,"last_name":"חמיד חליל","first_name":"מוחמדין","department":"ייצור- נוי"},{"id":1286517,"last_name":"בונדרנקו","first_name":"ויאצ'סלב","department":"ייצור- נוי"},{"id":1286518,"last_name":"ווקנין","first_name":"יוסף","department":"לוגסטיקה - נוי"},{"id":1286522,"last_name":"סלאח","first_name":"קאייר","department":"ייצור- נוי"},{"id":1286523,"last_name":"גלינר","first_name":"אלכסנדר","department":"לוגסטיקה - נוי"},{"id":1286528,"last_name":"דמיטרייבסקי","first_name":"ולדמיר","department":"לוגסטיקה - נוי"},{"id":1286531,"last_name":"גורובוי","first_name":"איגור","department":"לוגסטיקה - נוי"},{"id":1286532,"last_name":"ברשאי","first_name":"אלברט","department":"אבטחת איכות-נתיבי נו"},{"id":1286535,"last_name":"רוזנר","first_name":"רוני","department":"שיווק - נוי"},{"id":1286536,"last_name":"יעקובי","first_name":"איתמר","department":"שיווק - נוי"},{"id":1286537,"last_name":"לוי","first_name":"מלכה","department":"שיווק - נוי"},{"id":1286540,"last_name":"חדריה","first_name":"רבקה","department":"שיווק - נוי"},{"id":1286590,"last_name":"בלוך","first_name":"דינה","department":"הנהח\"ש"},{"id":1286599,"last_name":"יונא","first_name":"טל","department":"חצר"},{"id":1286612,"last_name":"צרויה","first_name":"יצחק","department":"אחזקה"},{"id":1286657,"last_name":"ורטליב","first_name":"ארקדי","department":"לוגסטיקה - נוי"},{"id":1286673,"last_name":"קוצקר","first_name":"ישראל","department":"מפעל רוחבי"},{"id":1286683,"last_name":"לנציאנו","first_name":"סהר","department":"טרומי דרומי ב'"},{"id":1286685,"last_name":"רייפמן","first_name":"אנה","department":"תפ\"י"},{"id":1286730,"last_name":"רודי","first_name":"איגור","department":"ייצור- נוי"},{"id":1286745,"last_name":"עמנו","first_name":"עדן","department":"מפעל רוחבי"},{"id":1286762,"last_name":"ברברוב","first_name":"אוקסנה","department":"הנהח\"ש"},{"id":1286797,"last_name":"באזוב","first_name":"מאור","department":"אחזקה"},{"id":1286816,"last_name":"ווהבי","first_name":"נזא","department":"שפיה"},{"id":1286834,"last_name":"נחום","first_name":"אריה","department":"שפיה"},{"id":1286835,"last_name":"כהן","first_name":"אורלי","department":"משרד"},{"id":1286853,"last_name":"היינה","first_name":"יצחק","department":"אחזקה"},{"id":1286856,"last_name":"נניקשוילי","first_name":"בני","department":"מנהלה - נוי"},{"id":1286862,"last_name":"אחדות","first_name":"בני","department":"שרות שדה"},{"id":1286873,"last_name":"לב","first_name":"דניאל","department":"מכירות"},{"id":1286915,"last_name":"כלאף","first_name":"אלרואי","department":"שיווק - נוי"},{"id":1286946,"last_name":"מובראק","first_name":"אחמד","department":"לוגסטיקה - נוי"},{"id":1286998,"last_name":"לאונטייב","first_name":"אולגה","department":"תפ\"י"},{"id":1287006,"last_name":"אלקברוב","first_name":"אלמן","department":"ייצור- נוי"},{"id":1287037,"last_name":"שיפנוק","first_name":"סרגיי","department":"אחזקה - נוי"},{"id":1287045,"last_name":"בנישו","first_name":"שיראל","department":"תפ\"י"},{"id":1287055,"last_name":"קליינר","first_name":"איגור","department":"לוגסטיקה - נוי"},{"id":1287065,"last_name":"אריאס רייטור","first_name":"רמון","department":"מכונות"},{"id":1287071,"last_name":"ויינרט","first_name":"איגור","department":"מכונות"},{"id":1287093,"last_name":"ספיגולנט","first_name":"אריה","department":"פילרים"},{"id":1287132,"last_name":"גרוסו","first_name":"גנדי","department":"ייצור- נוי"},{"id":1287164,"last_name":"גטנך","first_name":"טקטאי","department":"טרומי צפוני"},{"id":1287189,"last_name":"אזניה","first_name":"אימוודאו","department":"טרומי צפוני"},{"id":1287193,"last_name":"ספיגולנט","first_name":"דוד","department":"פילרים"},{"id":1287229,"last_name":"אונולד","first_name":"אלכסנדר","department":"ייצור- נוי"},{"id":1287235,"last_name":"יארוסקי","first_name":"ירון","department":"אחזקה - נוי"},{"id":1287236,"last_name":"דמיטרי","first_name":"קובלצקי","department":"תפ\"י"},{"id":1287237,"last_name":"בטאן","first_name":"רוני אהרון","department":"מוצרי בטון"},{"id":1287238,"last_name":"סמארה","first_name":"נסראת","department":"שפיה"},{"id":1287245,"last_name":"שלום","first_name":"ליאור","department":"אחזקה"},{"id":1287251,"last_name":"טקלה","first_name":"עזרא","department":"טרומי דרומי"},{"id":1287254,"last_name":"שטרן דוד","first_name":"בתאל","department":"תפ\"י"},{"id":1287261,"last_name":"יצחק","first_name":"עידן","department":"מכירות"},{"id":1287276,"last_name":"דהרי","first_name":"מנחם","department":"מכירות"},{"id":1287287,"last_name":"פוגודין","first_name":"יבגני","department":"ייצור- נוי"},{"id":1287312,"last_name":"דרוגלב","first_name":"דניל","department":"לוגסטיקה - נוי"},{"id":1287317,"last_name":"ילאו","first_name":"בלטה","department":"טרומי צפוני"},{"id":1287333,"last_name":"שגל","first_name":"איה","department":"משלוחים"},{"id":1287363,"last_name":"זייד","first_name":"זאהי","department":"שפיה"},{"id":1287379,"last_name":"נגרי","first_name":"אלירן בן","department":"מכירות"},{"id":1287384,"last_name":"עמוסי","first_name":"אסף","department":"מכירות"},{"id":1287404,"last_name":"נחזר","first_name":"אנסטסיה","department":"מכונות"},{"id":1287405,"last_name":"מזרחי טליאז","first_name":"לאון","department":"מכונות"},{"id":1287406,"last_name":"דוד פור","first_name":"שי","department":"מכירות"},{"id":1287410,"last_name":"בלאיש","first_name":"אלעד","department":"אחזקה - נוי"},{"id":1287494,"last_name":"שושן","first_name":"אור","department":"משרד"},{"id":1287498,"last_name":"שושן","first_name":"מאור","department":"משלוחים"},{"id":1287516,"last_name":"פדידה","first_name":"אגם","department":"טרומי דרומי ב'"},{"id":1287517,"last_name":"אשכנזי","first_name":"דניאל","department":"תפ\"י"},{"id":1287532,"last_name":"מידר","first_name":"רונן","department":"שיווק - נוי"},{"id":1287536,"last_name":"גטה","first_name":"לילך","department":"משלוחים"},{"id":1287537,"last_name":"מסיקה","first_name":"נופר","department":"משלוחים"},{"id":6666146,"last_name":"אובודיאנסקי","first_name":"אלכסנדר","department":"ייצור- נוי"},{"id":6666293,"last_name":"פיימן","first_name":"מריאנה","department":"לוגסטיקה - נוי"},{"id":6666296,"last_name":"זובוב","first_name":"ולרי","department":"ייצור- נוי"},{"id":6666297,"last_name":"בריילובסקי","first_name":"ניקולאי","department":"ייצור- נוי"},{"id":8886118,"last_name":"בולטוביץ","first_name":"אלכסנדר","department":"לוגסטיקה - נוי"},{"id":11100001,"last_name":"INDIKA","first_name":"DISSANAYAKE","department":"טרומי צפוני"},{"id":22210001,"last_name":"GIHAN","first_name":"WICKRAMARATH","department":"רשת ואגריגטים"},{"id":22210002,"last_name":"SAMITH","first_name":"HANNAGALA","department":"רשת ואגריגטים"},{"id":22210004,"last_name":"CHAMINDA","first_name":"MUDUGAMUWA","department":"רשת ואגריגטים"},{"id":22210005,"last_name":"Ajith Kumar","first_name":"Nadakandage","department":"מכונות"},{"id":22210006,"last_name":"Akila Nilanga","first_name":"Kalasin Diss","department":"מכונות"},{"id":22210007,"last_name":"Abeysingha Weer","first_name":"Prasanna Lak","department":"מכונות"},{"id":22210008,"last_name":"Wickrama Arachchinge","first_name":"Gayan Sampat","department":"טרומי צפוני"},{"id":22210009,"last_name":"Nakandalage","first_name":"Jeewantha La","department":"מכונות"},{"id":22210010,"last_name":"Rathnaweerasingha Ar","first_name":"Lahiru Geeth","department":"מכונות"},{"id":33310001,"last_name":"Lomda","first_name":"Suphasit","department":"אחזקה"},{"id":33310002,"last_name":"Phonkhammak","first_name":"Arnon","department":"אחזקה"},{"id":33310006,"last_name":"THONGSAWAT","first_name":"THANAPORN","department":"אחזקה"},{"id":33310007,"last_name":"Meeraet","first_name":"Namo","department":"מכונות"},{"id":33310008,"last_name":"Chimaram","first_name":"Wichan","department":"מכונות"},{"id":33310010,"last_name":"Thammasen","first_name":"Somboon","department":"טרומי דרומי"},{"id":44410008,"last_name":"Gorodinschi","first_name":"Nicolae","department":"ייצור- נוי"},{"id":44410009,"last_name":"antoli","first_name":"palcinschi","department":"ייצור- נוי"},{"id":44410011,"last_name":"bicanov","first_name":"igori","department":"ייצור- נוי"},{"id":44410021,"last_name":"Plingau","first_name":"viorel","department":"ייצור- נוי"},{"id":44410023,"last_name":"Yusupov","first_name":"Mekhroj","department":"ייצור- נוי"},{"id":44410025,"last_name":"Bozarov","first_name":"Firuz","department":"ייצור- נוי"},{"id":44410027,"last_name":"mullojonov","first_name":"sanat","department":"ייצור- נוי"},{"id":44410028,"last_name":"SHEHAN MADUSHANKA","first_name":"ETHAGAMAGE","department":"ייצור- נוי"},{"id":44410030,"last_name":"gulomov","first_name":"uktam","department":"ייצור- נוי"},{"id":44410031,"last_name":"ulmasov","first_name":"utkurjon","department":"ייצור- נוי"},{"id":44410032,"last_name":"Ismailov","first_name":"Salim","department":"ייצור- נוי"},{"id":44410033,"last_name":"Bahodir","first_name":"Makhmudov","department":"ייצור- נוי"},{"id":44410034,"last_name":"Mulladjanov","first_name":"Dilshod","department":"ייצור- נוי"},{"id":44410035,"last_name":"Gulamkhasanov","first_name":"Muzaffar","department":"ייצור- נוי"},{"id":44410125,"last_name":"kasimov","first_name":"makhmud","department":"ייצור- נוי"},{"id":44410127,"last_name":"Bozorov","first_name":"Damir","department":"ייצור- נוי"},{"id":55510018,"last_name":"bractov","first_name":"andrei","department":"מכונות"},{"id":55510047,"last_name":"thorawela gedara","first_name":"iroshan","department":"טרומי דרומי"},{"id":55510049,"last_name":"Hettihewa","first_name":"Susantha","department":"טרומי צפוני"},{"id":55510050,"last_name":"Thaminda","first_name":"sampath","department":"מכונות"},{"id":55510051,"last_name":"Deegodage","first_name":"nishantha","department":"טרומי צפוני"},{"id":55510053,"last_name":"Wijesundara","first_name":"Rashika Roha","department":"מכונות"},{"id":55510054,"last_name":"liyange don","first_name":"senon rasika","department":"טרומי דרומי"},{"id":55510056,"last_name":"welhanage","first_name":"malaka sanja","department":"מכונות"},{"id":55510057,"last_name":"mawath gedara","first_name":"chamila wije","department":"שרות שדה"},{"id":55510059,"last_name":"NONAME","first_name":"RAHUL","department":"טרומי צפוני"},{"id":55510060,"last_name":"SINGH","first_name":"MADAN","department":"מכונות"},{"id":55510069,"last_name":"KHAKBERDIEV","first_name":"MARUF","department":"מכונות"},{"id":55510074,"last_name":"Herath Mudiyanselage","first_name":"Sudarshana","department":"טרומי דרומי"},{"id":55510077,"last_name":"Fernando","first_name":"Warnakula","department":"טרומי דרומי"},{"id":55510079,"last_name":"Kalumuni","first_name":"Prasanna","department":"טרומי צפוני"},{"id":55510080,"last_name":"Masewge","first_name":"Sujith Ranga","department":"טרומי דרומי"},{"id":55510081,"last_name":"Welikada Geoara","first_name":"Pradeep","department":"טרומי דרומי"},{"id":55510084,"last_name":"KHASANOV","first_name":"PARVIZ","department":"מכונות"},{"id":55510085,"last_name":"RUZIKULOV","first_name":"SUNNAT","department":"רשת ואגריגטים"},{"id":55510088,"last_name":"SOBIROV","first_name":"SHERZOD","department":"קידוח"},{"id":55510089,"last_name":"SOLEEV","first_name":"SUNNAT","department":"מכונות"},{"id":55510093,"last_name":"ACHILOV","first_name":"SHOKIRJON","department":"מכונות"},{"id":55510094,"last_name":"MARUPOV","first_name":"ZARSHED","department":"מכונות"},{"id":55510095,"last_name":"KIRGIZOV","first_name":"ORIF","department":"פילרים"},{"id":55510096,"last_name":"RAFIK","first_name":"MIRZOKULOV","department":"טרומי דרומי"},{"id":55510098,"last_name":"WANG","first_name":"RUIGUO","department":"אחזקה"},{"id":55510099,"last_name":"MURADOV","first_name":"MUNIS","department":"קידוח"},{"id":55510101,"last_name":"DJALILOV","first_name":"SAVLAT","department":"פילרים"},{"id":55510102,"last_name":"TANG","first_name":"YAJUN","department":"רשת ואגריגטים"},{"id":55510103,"last_name":"SRISA ART","first_name":"PRAWIT","department":"מכונות"},{"id":55510104,"last_name":"Teshaev","first_name":"Fakhritdin","department":"מכונות"},{"id":55510105,"last_name":"Sadriev","first_name":"Mirmukhsin","department":"קידוח"},{"id":55510107,"last_name":"Mahawaththage","first_name":"Pawantha Dil","department":"טרומי דרומי"},{"id":55510108,"last_name":"Palliyage","first_name":"Chaminda Per","department":"טרומי דרומי ב'"},{"id":55510109,"last_name":"Chaminda Kumara","first_name":"Wataketiye W","department":"טרומי דרומי ב'"},{"id":55510110,"last_name":"Siriwardana Mudiyans","first_name":"Asanka","department":"טרומי דרומי"},{"id":55510113,"last_name":"Mirissa","first_name":"Asela Viraj","department":"קידוח"},{"id":55510114,"last_name":"Khaydarov","first_name":"Amir","department":"טרומי דרומי"},{"id":55510115,"last_name":"Malhinge","first_name":"Sanjeewa","department":"טרומי דרומי ב'"},{"id":55510116,"last_name":"Lutfilloev","first_name":"Abdullo","department":"טרומי צפוני"},{"id":77710040,"last_name":"Periyasmy","first_name":"subburaj","department":"טרומי דרומי"},{"id":77710075,"last_name":"SHEBEDIUK","first_name":"OLENA","department":"מכונות"},{"id":77710076,"last_name":"PASURA","first_name":"OLGA","department":"מכונות"},{"id":77710077,"last_name":"Volzhenina","first_name":"Maryna","department":"מכונות"},{"id":77710086,"last_name":"BASIUK","first_name":"SVITLANA","department":"מכונות"},{"id":77710097,"last_name":"Bujor","first_name":"Vladimir","department":"טרומי צפוני"},{"id":88870245,"last_name":"הטר אחמד","first_name":"טיגני דודא","department":"טרומי צפוני"},{"id":98710001,"last_name":"Gorakh sahni","first_name":"Vikash Kumar","department":"טרומי דרומי ב'"},{"id":98710002,"last_name":"Mandal","first_name":"Biplab","department":"טרומי דרומי ב'"},{"id":98710003,"last_name":"Nagina Ram","first_name":"Jitendra Ram","department":"שרות שדה"},{"id":98710004,"last_name":"Nammuni Hewage","first_name":"Sumith Nayan","department":"טרומי דרומי"},{"id":98710005,"last_name":"Kulasin Liyanag","first_name":"Camal Abeywa","department":"טרומי דרומי"},{"id":99910004,"last_name":"אבועראר","first_name":"סאבר","department":"לוגסטיקה - נוי"},{"id":99910006,"last_name":"אבו ע'אנם","first_name":"מוחמד","department":"חצר"},{"id":99910019,"last_name":"אבו ע'אנם","first_name":"חוסם","department":"לוגסטיקה - נוי"},{"id":99910032,"last_name":"אבו ג'אנם","first_name":"עבדאללה","department":"לוגסטיקה - נוי"},{"id":444100126,"last_name":"Tillaev","first_name":"Djamshed","department":"ייצור- נוי"}];
@@ -307,19 +319,38 @@ const PASSWORDS = {
 };
 
 // ── State ────────────────────────────────────────────────────────────────
-let attendance   = {};   // {empId: bool}  — local drafts per session
-let submitted    = {};   // {dept: {attendance, time, present, total}}  — shared storage
+let attendance   = {};
+let submitted    = {};
+let dayClosedAt  = null;
 let currentDept  = null;
 let filterStatus = 'all';
 let currentRole  = null;
 
+// ── Storage keys ──────────────────────────────────────────────────────────
+const today = () => new Date().toISOString().slice(0,10); // YYYY-MM-DD
+const KEY_SUBMITTED = () => `data/${today()}/submitted`;
+const KEY_DRAFT     = () => `data/${today()}/draft`;
+const KEY_DAYCLOSED = () => `data/${today()}/dayClosed`;
+
+let _listener = null;
 
 async function loadData() {
-  submitted  = (await storageGet('submitted_reports')) || {};
-  attendance = (await storageGet('attendance_draft'))  || {};
+  submitted   = (await storageGet(KEY_SUBMITTED())) || {};
+  attendance  = (await storageGet(KEY_DRAFT()))     || {};
+  dayClosedAt = (await storageGet(KEY_DAYCLOSED())) || null;
+  // Real-time listener for submitted reports
+  if (_listener) db.ref(KEY_SUBMITTED()).off('value', _listener);
+  _listener = db.ref(KEY_SUBMITTED()).on('value', snap => {
+    submitted = snap.val() || {};
+    renderDepts();
+    if (document.getElementById('pageSummary').classList.contains('active')) renderSummary();
+    updateTotalBadge();
+  });
 }
-async function saveDraft()     { await storageSet('attendance_draft',   attendance); }
-async function saveSubmitted() { await storageSet('submitted_reports',  submitted); }
+
+async function saveDraft() { await storageSet(KEY_DRAFT(), attendance); }
+async function saveSubmitted() { await storageSet(KEY_SUBMITTED(), submitted); }
+async function saveDayClosed(ts) { await storageSet(KEY_DAYCLOSED(), ts); }
 
 // ── Login ─────────────────────────────────────────────────────────────────
 window.doLogin = async function() {
@@ -340,6 +371,7 @@ window.doLogin = async function() {
     document.getElementById('submitPanel').style.display  = 'block';
     document.getElementById('empControls').style.display  = 'block';
     document.getElementById('hrStatsPanel').style.display = 'block';
+    document.getElementById('hrActionsPanel').style.display = 'block';
   }
   document.getElementById('totalEmp').textContent = EMPLOYEES.length;
   document.getElementById('headerDate').textContent =
@@ -350,15 +382,6 @@ window.doLogin = async function() {
   if (currentRole === 'manager' && currentDept) {
     openDept(currentDept);
   }
-  // האזנה לשינויים בזמן אמת
-  onValue(ref(db, 'submitted_reports'), (snapshot) => {
-    if (snapshot.exists()) {
-      submitted = snapshot.val() || {};
-      renderDepts();
-      if (currentDept) renderEmployees();
-      renderSummary();
-    }
-  });
 };
 
 window.logout = function() {
@@ -505,6 +528,7 @@ window.renderEmployees = function() {
 };
 
 window.toggleEmp = async function(id) {
+  if (dayClosedAt && currentRole !== 'hr') { toast('⛔ יום העבודה נסגר'); return; }
   attendance[id] = !attendance[id];
   await saveDraft();
   renderEmployees();
@@ -528,6 +552,7 @@ window.markAll = async function(val) {
 // ── Submit ────────────────────────────────────────────────────────────────
 window.submitReport = async function() {
   if (!currentDept) return;
+  if (dayClosedAt) { toast('⛔ יום העבודה נסגר — לא ניתן לשלוח דוחות'); return; }
   const deptEmps = EMPLOYEES.filter(e=>e.department===currentDept);
   const snap = {};
   deptEmps.forEach(e=>{snap[e.id]=!!attendance[e.id];});
@@ -544,10 +569,75 @@ window.submitReport = async function() {
   renderDepts();
 };
 
+// ── Close Day ─────────────────────────────────────────────────────────────
+window.closeDay = async function() {
+  if (dayClosedAt) { toast('היום כבר נסגר'); return; }
+  const missing = DEPARTMENTS.filter(d => !submitted[d]);
+  const msg = missing.length > 0
+    ? `שים לב: ${missing.length} מחלקות טרם שלחו דוח.\nהאם לסגור את היום בכל זאת?`
+    : 'האם לסגור את יום העבודה? לא ניתן יהיה לערוך לאחר מכן.';
+  if (!confirm(msg)) return;
+  dayClosedAt = new Date().toISOString();
+  await saveDayClosed(dayClosedAt);
+  const btn = document.getElementById('btnCloseDay');
+  btn.textContent = `🔒 יום נסגר ב-${timeStr(dayClosedAt)}`;
+  btn.classList.add('closed');
+  btn.onclick = null;
+  document.getElementById('dayClosedBanner').style.display = 'block';
+  toast('🔒 יום העבודה נסגר בהצלחה');
+};
+
+// ── Export Excel ──────────────────────────────────────────────────────────
+window.exportExcel = function() {
+  const dateStr = new Date().toLocaleDateString('he-IL');
+  // Build CSV with BOM for Hebrew support in Excel
+  const rows = [['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה','סטטוס','שעת דיווח']];
+  DEPARTMENTS.forEach(dept => {
+    const s = submitted[dept];
+    const deptEmps = EMPLOYEES.filter(e => e.department === dept);
+    deptEmps.forEach(emp => {
+      const isPresent = s ? (s.attendance && s.attendance[emp.id]) : !!attendance[emp.id];
+      const reportTime = s ? timeStr(s.time) : '';
+      rows.push([
+        dateStr,
+        dept,
+        emp.id,
+        emp.first_name,
+        emp.last_name,
+        isPresent ? 'נוכח' : 'נעדר',
+        reportTime
+      ]);
+    });
+  });
+  const csv = '\uFEFF' + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `נוכחות_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('📥 קובץ Excel הורד בהצלחה');
+};
+
 // ── Summary ───────────────────────────────────────────────────────────────
 function renderSummary() {
   const isHR = currentRole === 'hr';
   if (isHR) {
+    // Update close day button state
+    const btn = document.getElementById('btnCloseDay');
+    const banner = document.getElementById('dayClosedBanner');
+    if (dayClosedAt) {
+      btn.textContent = `🔒 יום נסגר ב-${timeStr(dayClosedAt)}`;
+      btn.classList.add('closed');
+      btn.onclick = null;
+      banner.style.display = 'block';
+    } else {
+      btn.textContent = '🔒 סגירת יום עבודה';
+      btn.classList.remove('closed');
+      btn.onclick = closeDay;
+      banner.style.display = 'none';
+    }
     const submittedCount = Object.keys(submitted).length;
     let totalPresent = 0, totalAbsent = 0;
     DEPARTMENTS.forEach(d => {
