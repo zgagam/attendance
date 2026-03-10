@@ -305,7 +305,7 @@ const USERS = {
 const PASSWORDS = {
   "hr":      "orlyhr26",
   "manager": "2026",
-  "viewer":  (u) => u + "cp26",
+  "viewer":  "cp26",
 };
 
 // ── State ────────────────────────────────────────────────────────────────
@@ -349,7 +349,7 @@ window.doLogin = async function() {
   const user     = USERS[username];
   if (!user) { document.getElementById('loginErr').textContent = 'שם משתמש לא קיים'; return; }
   const pwRule = PASSWORDS[user.role];
-  const pwOk = typeof pwRule === 'function' ? pw === pwRule(username) : pw === pwRule;
+  const pwOk = user.role === 'viewer' ? pw === username + 'cp26' : pw === pwRule;
   if (!pwOk) { document.getElementById('loginErr').textContent = 'סיסמה שגויה'; return; }
   currentRole = user.role;
   currentDept = user.dept;
@@ -682,7 +682,6 @@ function renderSummary() {
       const rb2 = document.getElementById('btnReopenDay');
       if (rb2) rb2.style.display = 'none';
     }
-    } // end viewer check
     const submittedCount = Object.keys(submitted).length;
     let totalPresent = 0, totalAbsent = 0;
     DEPARTMENTS.forEach(d => {
