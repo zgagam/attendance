@@ -236,17 +236,35 @@ body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#
 <div class="toast" id="toast"></div>
 
 <script type="module">
-// ── Storage API ──────────────────────────────────────────────────────────
-const Storage = window.storage || null;
+// ── Firebase ──────────────────────────────────────────────────────────────
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD_FLjRR0Su89VaUNUX9b539OQBQZAYNLc",
+  authDomain: "attendance-2026-207e3.firebaseapp.com",
+  projectId: "attendance-2026-207e3",
+  storageBucket: "attendance-2026-207e3.firebasestorage.app",
+  messagingSenderId: "689625407938",
+  appId: "1:689625407938:web:a6e299674a02d2c311f65b",
+  measurementId: "G-J6FYMHPLEV",
+  databaseURL: "https://attendance-2026-207e3-default-rtdb.firebaseio.com"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db    = getDatabase(fbApp);
 
 async function storageGet(key) {
-  if (!Storage) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
-  try { const r = await Storage.get(key); return r ? JSON.parse(r.value) : null; } catch { return null; }
+  try {
+    const snapshot = await get(ref(db, key));
+    return snapshot.exists() ? snapshot.val() : null;
+  } catch(e) { console.error('storageGet error', e); return null; }
 }
+
 async function storageSet(key, val) {
-  const json = JSON.stringify(val);
-  if (!Storage) { try { localStorage.setItem(key, json); } catch {} return; }
-  try { await Storage.set(key, json); } catch {}
+  try {
+    await set(ref(db, key), val);
+  } catch(e) { console.error('storageSet error', e); }
 }
 
 // ── Data ──────────────────────────────────────────────────────────────────
@@ -295,16 +313,13 @@ let currentDept  = null;
 let filterStatus = 'all';
 let currentRole  = null;
 
-// ── Storage keys ──────────────────────────────────────────────────────────
-const KEY_SUBMITTED = 'submitted_reports';
-const KEY_DRAFT     = 'attendance_draft';
 
 async function loadData() {
-  submitted  = (await storageGet(KEY_SUBMITTED)) || {};
-  attendance = (await storageGet(KEY_DRAFT))     || {};
+  submitted  = (await storageGet('submitted_reports')) || {};
+  attendance = (await storageGet('attendance_draft'))  || {};
 }
-async function saveDraft() { await storageSet(KEY_DRAFT, attendance); }
-async function saveSubmitted() { await storageSet(KEY_SUBMITTED, submitted); }
+async function saveDraft()     { await storageSet('attendance_draft',   attendance); }
+async function saveSubmitted() { await storageSet('submitted_reports',  submitted); }
 
 // ── Login ─────────────────────────────────────────────────────────────────
 window.doLogin = async function() {
@@ -335,6 +350,15 @@ window.doLogin = async function() {
   if (currentRole === 'manager' && currentDept) {
     openDept(currentDept);
   }
+  // האזנה לשינויים בזמן אמת
+  onValue(ref(db, 'submitted_reports'), (snapshot) => {
+    if (snapshot.exists()) {
+      submitted = snapshot.val() || {};
+      renderDepts();
+      if (currentDept) renderEmployees();
+      renderSummary();
+    }
+  });
 };
 
 window.logout = function() {
