@@ -234,7 +234,9 @@ body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#
       <div id="hrActionsPanel" style="display:none">
         <div class="day-closed-banner" id="dayClosedBanner">🔒 יום העבודה נסגר — לא ניתן לבצע שינויים נוספים</div>
         <div class="hr-actions">
-          <button class="btn-close-day" id="btnCloseDay" onclick="closeDay()">🔒 סגירת יום עבודה</button>
+          <div id="closeDayWrapper">
+            <button class="btn-close-day" id="btnCloseDay" onclick="closeDay()">🔒 סגירת יום עבודה</button>
+          </div>
           <button class="btn-excel" onclick="exportExcel()">📥 הורד דוח Excel</button>
         </div>
       </div>
@@ -364,10 +366,11 @@ window.doLogin = async function() {
     document.getElementById('hrActionsPanel').style.display = 'block';
   }
   if (currentRole === 'viewer') {
-    document.getElementById('submitPanel').style.display  = 'none';
-    document.getElementById('empControls').style.display  = 'none';
-    document.getElementById('hrStatsPanel').style.display = 'block';
-    document.getElementById('hrActionsPanel').style.display = 'none';
+    document.getElementById('submitPanel').style.display    = 'none';
+    document.getElementById('empControls').style.display    = 'none';
+    document.getElementById('hrStatsPanel').style.display   = 'block';
+    document.getElementById('hrActionsPanel').style.display = 'block';
+    document.getElementById('closeDayWrapper').style.display = 'none';
   }
   document.getElementById('totalEmp').textContent = EMPLOYEES.length;
   document.getElementById('headerDate').textContent =
@@ -634,10 +637,19 @@ window.exportExcel = function() {
 // ── Summary ───────────────────────────────────────────────────────────────
 function renderSummary() {
   const isHR = currentRole === 'hr';
-  if (isHR) {
+  const isViewer = currentRole === 'viewer';
+  if (isHR || isViewer) {
     // Update close day button state
     const btn = document.getElementById('btnCloseDay');
     const banner = document.getElementById('dayClosedBanner');
+    // viewer - hide close/open day buttons entirely
+    if (currentRole === 'viewer') {
+      btn.style.display = 'none';
+      const rb = document.getElementById('btnReopenDay');
+      if (rb) rb.style.display = 'none';
+    } else {
+      btn.style.display = '';
+    }
     if (dayClosedAt) {
       btn.textContent = `🔒 יום נסגר ב-${timeStr(dayClosedAt)}`;
       btn.classList.add('closed');
@@ -664,6 +676,13 @@ function renderSummary() {
       const reopenBtn = document.getElementById('btnReopenDay');
       if (reopenBtn) reopenBtn.style.display = 'none';
     }
+    // viewer: hide close/open day buttons
+    if (currentRole === 'viewer') {
+      btn.style.display = 'none';
+      const rb2 = document.getElementById('btnReopenDay');
+      if (rb2) rb2.style.display = 'none';
+    }
+    } // end viewer check
     const submittedCount = Object.keys(submitted).length;
     let totalPresent = 0, totalAbsent = 0;
     DEPARTMENTS.forEach(d => {
