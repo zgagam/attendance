@@ -768,6 +768,186 @@ function renderSummary() {
     </div>`;
   }).join('');
 }
+// ── Export Modal ──────────────────────────────────────────────────────────
+let exportTab = 'today';
+
+window.openExportModal = function() {
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('exportDateFrom').value = today;
+  document.getElementById('exportDateTo').value = today;
+  document.getElementById('exportDateSingle').value = today;
+  document.getElementById('exportStatus').textContent = '';
+  window.switchExportTab('today');
+  document.getElementById('exportModal').style.display = 'flex';
+};
+window.closeExportModal = function() { document.getElementById('exportModal').style.display = 'none'; };
+
+window.switchExportTab = function(tab) {
+  exportTab = tab;
+  ['today','range','single'].forEach(t => {
+    const el = document.getElementById('exportTab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if(el) el.style.display = t===tab ? 'block' : 'none';
+    const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if(btn) btn.classList.toggle('active', t===tab);
+  });
+};
+
+window.doExport = async function() {
+  const statusEl = document.getElementById('exportStatus');
+  statusEl.textContent = '⏳ טוען נתונים...';
+  try {
+    let dates = [];
+    if (exportTab === 'today') {
+      dates = [new Date().toISOString().slice(0,10)];
+    } else if (exportTab === 'single') {
+      const d = document.getElementById('exportDateSingle').value;
+      if (!d) { statusEl.textContent = '⚠️ בחר תאריך'; return; }
+      dates = [d];
+    } else {
+      const from = document.getElementById('exportDateFrom').value;
+      const to   = document.getElementById('exportDateTo').value;
+      if (!from || !to) { statusEl.textContent = '⚠️ בחר תאריך התחלה וסיום'; return; }
+      if (from > to) { statusEl.textContent = '⚠️ תאריך התחלה חייב להיות לפני תאריך הסיום'; return; }
+      let cur = new Date(from);
+      const end = new Date(to);
+      while (cur <= end) {
+        dates.push(cur.toISOString().slice(0,10));
+        cur.setDate(cur.getDate()+1);
+      }
+      if (dates.length > 31) { statusEl.textContent = '⚠️ טווח מקסימלי הוא 31 יום'; return; }
+    }
+    const rows = [['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה','סטטוס','שעת דיווח']];
+    for (const date of dates) {
+      const snap = await db.ref('data/' + date + '/submitted').once('value');
+      const dayData = snap.val() || {};
+      const dateStr = new Date(date + 'T12:00:00').toLocaleDateString('he-IL');
+      DEPARTMENTS.forEach(dept => {
+        const s = dayData[dept];
+        EMPLOYEES.filter(e => e.department === dept).forEach(emp => {
+          const isPresent = s ? !!(s.attendance && s.attendance[emp.id]) : null;
+          rows.push([dateStr, dept, emp.id, emp.first_name, emp.last_name,
+            isPresent === null ? 'לא דווח' : isPresent ? 'נוכח' : 'נעדר',
+            s ? timeStr(s.time) : '']);
+        });
+      });
+    }
+    statusEl.textContent = '';
+    const csv = '\uFEFF' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    const label = dates.length===1 ? dates[0] : dates[0] + '_עד_' + dates[dates.length-1];
+    a.download = 'נוכחות_' + label + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    window.closeExportModal();
+    toast('📥 קובץ Excel הורד בהצלחה');
+  } catch(e) {
+    statusEl.textContent = '❌ שגיאה בטעינת נתונים';
+    console.error(e);
+  }
+};
+
+// ── Manage Employees ───────────────────────────────────────────────────────
+window.openManageModal = function() {
+  const sel = document.getElementById('newEmpDept');
+  sel.innerHTML = DEPARTMENTS.map(d => '<option value="' + d + '">' + d + '</option>').join('');
+  window.switchManageTab('add');
+  window.renderRemoveList();
+  document.getElementById('manageModal').style.display = 'flex';
+};
+window.closeManageModal = function() { document.getElementById('manageModal').style.display = 'none'; };
+
+window.switchManageTab = function(tab) {
+  const tabEls = {add:'manageTabAdd', remove:'manageTabRemove', upload:'manageTabUpload'};
+  const btnEls = {add:'tabAddEmp', remove:'tabRemoveEmp', upload:'tabUploadEmp'};
+  Object.keys(tabEls).forEach(t => {
+    document.getElementById(tabEls[t]).style.display = t===tab ? 'block' : 'none';
+    document.getElementById(btnEls[t]).classList.toggle('active', t===tab);
+  });
+  if (tab==='remove') window.renderRemoveList();
+};
+
+window.addEmployee = async function() {
+  const id    = parseInt(document.getElementById('newEmpId').value);
+  const first = document.getElementById('newEmpFirst').value.trim();
+  const last  = document.getElementById('newEmpLast').value.trim();
+  const dept  = document.getElementById('newEmpDept').value;
+  if (!id || !first || !last || !dept) { toast('⚠️ יש למלא את כל השדות'); return; }
+  if (EMPLOYEES.find(e => e.id === id)) { toast('⚠️ עובד עם מספר זה כבר קיים'); return; }
+  EMPLOYEES.push({id, first_name: first, last_name: last, department: dept});
+  await saveEmployeesToFirebase();
+  document.getElementById('newEmpId').value = '';
+  document.getElementById('newEmpFirst').value = '';
+  document.getElementById('newEmpLast').value = '';
+  toast('✅ עובד ' + first + ' ' + last + ' נוסף בהצלחה');
+  renderDepts();
+};
+
+window.removeEmployee = async function(id) {
+  const emp = EMPLOYEES.find(e => e.id === id);
+  if (!emp) return;
+  if (!confirm('האם להסיר את ' + emp.first_name + ' ' + emp.last_name + '?')) return;
+  EMPLOYEES.splice(EMPLOYEES.indexOf(emp), 1);
+  await saveEmployeesToFirebase();
+  window.renderRemoveList();
+  renderDepts();
+  toast('🗑️ ' + emp.first_name + ' ' + emp.last_name + ' הוסר');
+};
+
+window.renderRemoveList = function() {
+  const search = (document.getElementById('empSearchRemove')?.value||'').trim().toLowerCase();
+  let list = EMPLOYEES;
+  if (search) list = list.filter(e =>
+    (e.first_name + ' ' + e.last_name).toLowerCase().includes(search) || String(e.id).includes(search));
+  document.getElementById('empRemoveList').innerHTML = list.slice(0,50).map(e =>
+    '<div class="emp-list-item">' +
+    '<span>' + e.first_name + ' ' + e.last_name +
+    ' <span style="color:#64748b;font-size:11px">#' + e.id + ' · ' + e.department + '</span></span>' +
+    '<button class="btn-remove" onclick="removeEmployee(' + e.id + ')">הסר</button>' +
+    '</div>'
+  ).join('') + (list.length>50 ? '<div style="color:#64748b;font-size:12px;text-align:center;padding:8px">ועוד ' + (list.length-50) + '... צמצם את החיפוש</div>' : '');
+};
+
+async function saveEmployeesToFirebase() {
+  await db.ref('employees').set(EMPLOYEES);
+  document.getElementById('totalEmp').textContent = EMPLOYEES.length;
+}
+
+window.uploadExcel = async function() {
+  const file = document.getElementById('uploadExcelFile').files[0];
+  const statusEl = document.getElementById('uploadStatus');
+  if (!file) { statusEl.textContent = '⚠️ בחר קובץ תחילה'; return; }
+  statusEl.textContent = '⏳ מעבד קובץ...';
+  try {
+    const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    const newEmps = [];
+    for (const row of rows) {
+      const id   = parseInt(row['מס. עובד'] || row['מספר עובד'] || row['id'] || 0);
+      const last = (row['שם משפחה - עברית'] || row['שם משפחה'] || '').toString().trim();
+      const first= (row['שם פרטי - עברית']  || row['שם פרטי']  || '').toString().trim();
+      const dept = (row['מחלקה - שם מחלקה'] || row['מחלקה']    || '').toString().trim();
+      if (id && first && last && dept) newEmps.push({id, first_name:first, last_name:last, department:dept});
+    }
+    if (newEmps.length === 0) { statusEl.textContent = '❌ לא נמצאו עובדים תקינים בקובץ'; return; }
+    if (!confirm('נמצאו ' + newEmps.length + ' עובדים. האם להחליף את רשימת העובדים הנוכחית?')) return;
+    EMPLOYEES.length = 0;
+    newEmps.forEach(e => EMPLOYEES.push(e));
+    await saveEmployeesToFirebase();
+    statusEl.textContent = '✅ נטענו ' + newEmps.length + ' עובדים בהצלחה';
+    renderDepts();
+    toast('✅ רשימת עובדים עודכנה (' + newEmps.length + ' עובדים)');
+  } catch(e) {
+    statusEl.textContent = '❌ שגיאה בעיבוד הקובץ - בדוק שהוא תקין';
+    console.error(e);
+  }
+};
+
 </script>
 
 <!-- Export Modal -->
