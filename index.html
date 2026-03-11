@@ -147,6 +147,30 @@ body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#
   .submit-panel{flex-direction:column;align-items:flex-start}
 }
 @media(max-width:360px){.emp-grid{grid-template-columns:1fr}}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-box{background:#1e293b;border-radius:16px;padding:28px;width:100%;max-width:480px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 20px 60px rgba(0,0,0,0.5)}
+.modal-title{font-size:18px;font-weight:700;color:#f1f5f9;margin-bottom:20px;text-align:center}
+.modal-label{font-size:13px;color:#94a3b8;margin-bottom:6px;display:block}
+.modal-input{width:100%;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:#0f172a;color:#f1f5f9;font-size:14px;font-family:inherit;margin-bottom:14px;box-sizing:border-box}
+.modal-input:focus{outline:none;border-color:#3b82f6}
+.modal-btns{display:flex;gap:10px;margin-top:6px}
+.modal-btn{flex:1;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit;transition:all 0.2s}
+.modal-btn-primary{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff}
+.modal-btn-secondary{background:rgba(255,255,255,0.08);color:#94a3b8}
+.modal-btn:hover{opacity:0.85;transform:translateY(-1px)}
+.modal-section{background:rgba(255,255,255,0.04);border-radius:10px;padding:16px;margin-bottom:14px;border:1px solid rgba(255,255,255,0.07)}
+.modal-section-title{font-size:13px;font-weight:700;color:#cbd5e1;margin-bottom:12px}
+.emp-list-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:7px;margin-bottom:6px;background:rgba(255,255,255,0.04);font-size:13px;color:#e2e8f0}
+.emp-list-item:hover{background:rgba(255,255,255,0.08)}
+.btn-remove{background:rgba(239,68,68,0.2);color:#f87171;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:12px;font-family:inherit}
+.btn-remove:hover{background:rgba(239,68,68,0.35)}
+.emp-search{width:100%;padding:8px 12px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:#0f172a;color:#f1f5f9;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box}
+.tab-btns{display:flex;gap:8px;margin-bottom:16px}
+.tab-btn{flex:1;padding:9px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#94a3b8;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;transition:all 0.2s}
+.tab-btn.active{background:rgba(59,130,246,0.25);color:#93c5fd;border-color:rgba(59,130,246,0.4)}
+.date-range-row{display:flex;gap:10px;align-items:flex-end}
+.date-range-row > div{flex:1}
 </style>
 </head>
 <body>
@@ -237,7 +261,8 @@ body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#
           <div id="closeDayWrapper">
             <button class="btn-close-day" id="btnCloseDay" onclick="closeDay()">🔒 סגירת יום עבודה</button>
           </div>
-          <button class="btn-excel" onclick="exportExcel()">📥 הורד דוח Excel</button>
+          <button class="btn-excel" onclick="openExportModal()">📥 הורד דוח Excel</button>
+          <button class="btn-excel" id="btnManageEmps" onclick="openManageModal()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);display:none">👥 ניהול עובדים</button>
         </div>
       </div>
       <div id="hrStatsPanel" style="display:none">
@@ -325,6 +350,13 @@ const KEY_DAYCLOSED = () => `data/${today()}/dayClosed`;
 let _listener = null;
 
 async function loadData() {
+  // Load employees from Firebase if available
+  const empSnap = await db.ref('employees').once('value');
+  const empData = empSnap.val();
+  if (empData && Array.isArray(empData) && empData.length > 0) {
+    EMPLOYEES.length = 0;
+    empData.forEach(e => EMPLOYEES.push(e));
+  }
   submitted   = (await storageGet(KEY_SUBMITTED())) || {};
   attendance  = (await storageGet(KEY_DRAFT()))     || {};
   dayClosedAt = (await storageGet(KEY_DAYCLOSED())) || null;
@@ -364,6 +396,7 @@ window.doLogin = async function() {
     document.getElementById('empControls').style.display  = 'block';
     document.getElementById('hrStatsPanel').style.display = 'block';
     document.getElementById('hrActionsPanel').style.display = 'block';
+    document.getElementById('btnManageEmps').style.display = 'inline-block';
   }
   if (currentRole === 'viewer') {
     document.getElementById('submitPanel').style.display    = 'none';
@@ -736,5 +769,91 @@ function renderSummary() {
   }).join('');
 }
 </script>
+
+<!-- Export Modal -->
+<div class="modal-overlay" id="exportModal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">📥 הפקת דוח נוכחות</div>
+    <div class="tab-btns">
+      <button class="tab-btn active" id="tabToday" onclick="switchExportTab('today')">יום נוכחי</button>
+      <button class="tab-btn" id="tabRange" onclick="switchExportTab('range')">טווח תאריכים</button>
+      <button class="tab-btn" id="tabSingle" onclick="switchExportTab('single')">יום בודד</button>
+    </div>
+    <div id="exportTabToday">
+      <p style="color:#94a3b8;font-size:13px;text-align:center;margin:0 0 16px">יוצא את דוח הנוכחות של היום הנוכחי</p>
+    </div>
+    <div id="exportTabRange" style="display:none">
+      <div class="date-range-row">
+        <div><label class="modal-label">מתאריך</label><input class="modal-input" type="date" id="exportDateFrom"></div>
+        <div><label class="modal-label">עד תאריך</label><input class="modal-input" type="date" id="exportDateTo"></div>
+      </div>
+    </div>
+    <div id="exportTabSingle" style="display:none">
+      <label class="modal-label">בחר תאריך</label>
+      <input class="modal-input" type="date" id="exportDateSingle">
+    </div>
+    <div id="exportStatus" style="font-size:13px;color:#f59e0b;min-height:20px;margin-bottom:10px;text-align:center"></div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-secondary" onclick="closeExportModal()">ביטול</button>
+      <button class="modal-btn modal-btn-primary" onclick="doExport()">📥 הורד</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Employees Modal -->
+<div class="modal-overlay" id="manageModal" style="display:none">
+  <div class="modal-box" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div class="modal-title">👥 ניהול עובדים</div>
+    <div class="tab-btns">
+      <button class="tab-btn active" id="tabAddEmp" onclick="switchManageTab('add')">➕ הוסף עובד</button>
+      <button class="tab-btn" id="tabRemoveEmp" onclick="switchManageTab('remove')">➖ הסר עובד</button>
+      <button class="tab-btn" id="tabUploadEmp" onclick="switchManageTab('upload')">📂 העלה אקסל</button>
+    </div>
+
+    <!-- Add tab -->
+    <div id="manageTabAdd">
+      <div class="modal-section">
+        <div class="modal-section-title">פרטי העובד</div>
+        <label class="modal-label">מס׳ עובד</label>
+        <input class="modal-input" type="number" id="newEmpId" placeholder="123456">
+        <label class="modal-label">שם פרטי</label>
+        <input class="modal-input" type="text" id="newEmpFirst" placeholder="ישראל">
+        <label class="modal-label">שם משפחה</label>
+        <input class="modal-input" type="text" id="newEmpLast" placeholder="ישראלי">
+        <label class="modal-label">מחלקה</label>
+        <select class="modal-input" id="newEmpDept"></select>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn modal-btn-secondary" onclick="closeManageModal()">סגור</button>
+        <button class="modal-btn modal-btn-primary" onclick="addEmployee()">➕ הוסף</button>
+      </div>
+    </div>
+
+    <!-- Remove tab -->
+    <div id="manageTabRemove" style="display:none">
+      <div class="modal-section">
+        <input class="emp-search" type="text" id="empSearchRemove" placeholder="חיפוש שם או מס׳ עובד..." oninput="renderRemoveList()">
+        <div id="empRemoveList" style="max-height:300px;overflow-y:auto"></div>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn modal-btn-secondary" onclick="closeManageModal()">סגור</button>
+      </div>
+    </div>
+
+    <!-- Upload tab -->
+    <div id="manageTabUpload" style="display:none">
+      <div class="modal-section">
+        <div class="modal-section-title">העלה קובץ אקסל חדש</div>
+        <p style="color:#94a3b8;font-size:13px;margin:0 0 12px">הקובץ חייב להכיל עמודות: מס. עובד, שם משפחה - עברית, שם פרטי - עברית, מחלקה - שם מחלקה</p>
+        <input class="modal-input" type="file" id="uploadExcelFile" accept=".xlsx,.xls" style="padding:8px">
+        <div id="uploadStatus" style="font-size:13px;color:#f59e0b;min-height:20px;margin-top:8px"></div>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn modal-btn-secondary" onclick="closeManageModal()">סגור</button>
+        <button class="modal-btn modal-btn-primary" onclick="uploadExcel()">📂 טען קובץ</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
