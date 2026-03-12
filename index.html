@@ -446,7 +446,16 @@ function pctClass(pct) { return pct>=80?'pct-green':pct>=50?'pct-yellow':'pct-re
 function timeStr(iso) { return iso ? new Date(iso).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) : ''; }
 
 function updateTotalBadge() {
-  const present = Object.values(attendance).filter(Boolean).length;
+  // Sum from submitted departments first, then add live attendance for non-submitted
+  let present = 0;
+  DEPARTMENTS.forEach(dept => {
+    if (submitted[dept]) {
+      present += submitted[dept].present || 0;
+    } else {
+      const deptEmps = EMPLOYEES.filter(e => e.department === dept);
+      present += deptEmps.filter(e => attendance[e.id]).length;
+    }
+  });
   document.getElementById('totalPresent').textContent = present;
 }
 
@@ -732,7 +741,7 @@ function renderSummary() {
   let sorted = DEPARTMENTS.map(dept => {
     const s = submitted[dept];
     const emps = EMPLOYEES.filter(e=>e.department===dept);
-    if (isHR && s) {
+    if ((isHR || isViewer) && s) {
       const pct = Math.round(s.present/emps.length*100);
       return { dept, total: emps.length, present: s.present, pct, isSubmitted: true, time: s.time };
     }
@@ -741,7 +750,7 @@ function renderSummary() {
     return { dept, total: emps.length, present, pct, isSubmitted: false };
   });
 
-  if (isHR) {
+  if (isHR || isViewer) {
     sorted.sort((a,b) => {
       if (a.isSubmitted !== b.isSubmitted) return a.isSubmitted ? -1 : 1;
       return a.pct - b.pct;
@@ -751,7 +760,7 @@ function renderSummary() {
   document.getElementById('summaryGrid').innerHTML = sorted.map(({dept,total,present,pct,isSubmitted,time}) => {
     const cls   = isSubmitted ? pctClass(pct) : 'pct-gray';
     const color = isSubmitted ? pctColor(pct) : 'rgba(255,255,255,0.15)';
-    const tag   = isHR
+    const tag   = (isHR || isViewer)
       ? (isSubmitted
           ? `<div class="submitted-tag">📤 דווח ב-${timeStr(time)}</div>`
           : `<div class="pending-tag">⏳ ממתין לדוח</div>`)
@@ -760,10 +769,10 @@ function renderSummary() {
       onclick="openDept('${dept.replace(/'/g,"\\'")}')">
       <div class="summary-top">
         <div class="summary-dept">${dept}</div>
-        <div class="summary-pct ${cls}">${isSubmitted||!isHR?pct+'%':'—'}</div>
+        <div class="summary-pct ${cls}">${isSubmitted||(!(isHR||isViewer))?pct+'%':'—'}</div>
       </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${isSubmitted||!isHR?pct:0}%;background:${color}"></div></div>
-      <div class="summary-sub">${isSubmitted||!isHR?present+' נוכחים מתוך '+total:'טרם דווח'}</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${isSubmitted||(!(isHR||isViewer))?pct:0}%;background:${color}"></div></div>
+      <div class="summary-sub">${isSubmitted||(!(isHR||isViewer))?present+' נוכחים מתוך '+total:'טרם דווח'}</div>
       ${tag}
     </div>`;
   }).join('');
