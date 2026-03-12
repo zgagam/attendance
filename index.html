@@ -484,14 +484,15 @@ function renderDepts() {
   const isViewer = currentRole === 'viewer';
   const visibleDepts = (isHR || isViewer) ? DEPARTMENTS : DEPARTMENTS.filter(d => d === currentDept);
   document.getElementById('deptGrid').innerHTML = visibleDepts.map(dept => {
-    const stats = getDeptStats(dept, isHR);
-    const sub   = isHR && stats.isSubmitted
+    const isHRorViewer = isHR || isViewer;
+    const stats = getDeptStats(dept, isHRorViewer);
+    const sub   = isHRorViewer && stats.isSubmitted
       ? `<div class="dept-submitted">📤 דווח ב-${timeStr(stats.time)}</div>`
       : stats.present > 0 ? `<div class="dept-present">✓ ${stats.present} מסומנים</div>` : '';
     return `<div class="dept-card" onclick="openDept('${dept.replace(/'/g,"\\'")}')">
       <div class="dept-name">${dept}</div>
       <div class="dept-count">${stats.total} עובדים</div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${isHR&&stats.isSubmitted?stats.pct:getDeptStats(dept).pct}%;background:${pctColor(stats.pct)}"></div></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${isHRorViewer&&stats.isSubmitted?stats.pct:getDeptStats(dept).pct}%;background:${pctColor(stats.pct)}"></div></div>
       ${sub}
     </div>`;
   }).join('');
