@@ -270,7 +270,10 @@ body{min-height:100vh;background:var(--rm-gray-light);font-family:'Segoe UI',Ari
           שלח את דוח הנוכחות למנהלת משאבי האנוש
           <span id="lastSubmittedLabel"></span>
         </div>
-        <button class="submit-btn" id="submitBtn" onclick="submitReport()">📤 שלח דוח</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="submit-btn" style="background:linear-gradient(135deg,#16A34A,#15803D);box-shadow:0 4px 14px rgba(22,163,74,0.35)" onclick="openDeptExportModal()">📥 הפק אקסל</button>
+          <button class="submit-btn" id="submitBtn" onclick="submitReport()">📤 שלח דוח</button>
+        </div>
       </div>
 
       <div id="empControls">
@@ -895,6 +898,114 @@ window.doExport = async function() {
 };
 
 // ── Manage Employees ───────────────────────────────────────────────────────
+// ── Export Dept Excel (Manager) ───────────────────────────────────────────
+let deptExportTab = 'today';
+
+window.openDeptExportModal = function() {
+  const todayVal = new Date().toISOString().slice(0,10);
+  document.getElementById('deptExportDateFrom').value = todayVal;
+  document.getElementById('deptExportDateTo').value   = todayVal;
+  document.getElementById('deptExportDateSingle').value = todayVal;
+  document.getElementById('deptExportStatus').textContent = '';
+  switchDeptExportTab('today');
+  document.getElementById('deptExportModal').style.display = 'flex';
+};
+window.closeDeptExportModal = function() { document.getElementById('deptExportModal').style.display = 'none'; };
+
+window.switchDeptExportTab = function(tab) {
+  deptExportTab = tab;
+  ['today','range','single'].forEach(t => {
+    const el  = document.getElementById('deptExportTab' + t.charAt(0).toUpperCase() + t.slice(1));
+    const btn = document.getElementById('deptTabBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (el)  el.style.display  = t === tab ? 'block' : 'none';
+    if (btn) btn.classList.toggle('active', t === tab);
+  });
+};
+
+window.doDeptExport = async function() {
+  const dept = currentDept;
+  if (!dept) { toast('⚠️ לא נמצאה מחלקה'); return; }
+  const statusEl = document.getElementById('deptExportStatus');
+  statusEl.textContent = '⏳ טוען נתונים...';
+  try {
+    let dates = [];
+    if (deptExportTab === 'today') {
+      dates = [new Date().toISOString().slice(0,10)];
+    } else if (deptExportTab === 'single') {
+      const d = document.getElementById('deptExportDateSingle').value;
+      if (!d) { statusEl.textContent = '⚠️ בחר תאריך'; return; }
+      dates = [d];
+    } else {
+      const from = document.getElementById('deptExportDateFrom').value;
+      const to   = document.getElementById('deptExportDateTo').value;
+      if (!from || !to) { statusEl.textContent = '⚠️ בחר תאריך התחלה וסיום'; return; }
+      if (from > to)    { statusEl.textContent = '⚠️ תאריך התחלה חייב להיות לפני תאריך הסיום'; return; }
+      let cur = new Date(from), end = new Date(to);
+      while (cur <= end) { dates.push(cur.toISOString().slice(0,10)); cur.setDate(cur.getDate()+1); }
+      if (dates.length > 31) { statusEl.textContent = '⚠️ טווח מקסימלי הוא 31 יום'; return; }
+    }
+
+    const empList = EMPLOYEES.filter(e => e.department === dept);
+    const rows = [['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה','סטטוס','שעת דיווח','חתימה']];
+
+    for (const date of dates) {
+      const snap = await db.ref('data/' + date + '/submitted').once('value');
+      const dayData = snap.val() || {};
+      const s = dayData[dept];
+      const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('he-IL');
+      empList.forEach(emp => {
+        let status, reportTime;
+        if (s) {
+          const isPresent = !!(s.attendance && s.attendance[emp.id]);
+          status = isPresent ? 'נוכח' : 'נעדר';
+          reportTime = timeStr(s.time);
+        } else if (date === new Date().toISOString().slice(0,10)) {
+          const isPresent = !!(attendance[emp.id]);
+          status = isPresent ? 'נוכח (טיוטה)' : 'נעדר (טיוטה)';
+          reportTime = '';
+        } else {
+          status = 'לא דווח';
+          reportTime = '';
+        }
+        rows.push([dateLabel, dept, emp.id, emp.first_name, emp.last_name, status, reportTime, '']);
+      });
+      // summary line per day
+      if (dates.length > 1) {
+        const presentCount = s
+          ? empList.filter(emp => !!(s.attendance && s.attendance[emp.id])).length
+          : 0;
+        rows.push(['סיכום ' + dateLabel + ':', '', '', '', '', 'נוכחים: ' + presentCount + ' / ' + empList.length, '', '']);
+        rows.push([]);
+      }
+    }
+    if (dates.length === 1) {
+      const snap = await db.ref('data/' + dates[0] + '/submitted').once('value');
+      const s = (snap.val() || {})[dept];
+      const presentCount = s
+        ? empList.filter(emp => !!(s.attendance && s.attendance[emp.id])).length
+        : empList.filter(emp => !!(attendance[emp.id])).length;
+      rows.push([]);
+      rows.push(['סיכום:', '', '', '', '', 'נוכחים: ' + presentCount + ' מתוך ' + empList.length, '', '']);
+    }
+
+    statusEl.textContent = '';
+    const csv = '\uFEFF' + rows.map(r => r.map(c => '"' + String(c || '').replace(/"/g,'""') + '"').join(',')).join('\r\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    const label = dates.length === 1 ? dates[0] : dates[0] + '_עד_' + dates[dates.length-1];
+    a.download = 'נוכחות_' + dept + '_' + label + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    window.closeDeptExportModal();
+    toast('📥 קובץ ' + dept + ' הורד בהצלחה');
+  } catch(e) {
+    statusEl.textContent = '❌ שגיאה בטעינת נתונים';
+    console.error(e);
+  }
+};
+
 window.openManageModal = function() {
   const sel = document.getElementById('newEmpDept');
   sel.innerHTML = DEPARTMENTS.map(d => '<option value="' + d + '">' + d + '</option>').join('');
@@ -1021,6 +1132,36 @@ window.uploadExcel = async function() {
     <div class="modal-btns">
       <button class="modal-btn modal-btn-secondary" onclick="closeExportModal()">ביטול</button>
       <button class="modal-btn modal-btn-primary" onclick="doExport()">📥 הורד</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dept Export Modal (Manager) -->
+<div class="modal-overlay" id="deptExportModal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">📥 הפקת דוח נוכחות מחלקה</div>
+    <div class="tab-btns">
+      <button class="tab-btn active" id="deptTabBtnToday"  onclick="switchDeptExportTab('today')">יום נוכחי</button>
+      <button class="tab-btn"        id="deptTabBtnRange"  onclick="switchDeptExportTab('range')">טווח תאריכים</button>
+      <button class="tab-btn"        id="deptTabBtnSingle" onclick="switchDeptExportTab('single')">יום בודד</button>
+    </div>
+    <div id="deptExportTabToday">
+      <p style="color:var(--rm-text-soft);font-size:13px;text-align:center;margin:0 0 16px">יוצא את דוח הנוכחות של המחלקה להיום</p>
+    </div>
+    <div id="deptExportTabRange" style="display:none">
+      <div class="date-range-row">
+        <div><label class="modal-label">מתאריך</label><input class="modal-input" type="date" id="deptExportDateFrom"></div>
+        <div><label class="modal-label">עד תאריך</label><input class="modal-input" type="date" id="deptExportDateTo"></div>
+      </div>
+    </div>
+    <div id="deptExportTabSingle" style="display:none">
+      <label class="modal-label">בחר תאריך</label>
+      <input class="modal-input" type="date" id="deptExportDateSingle">
+    </div>
+    <div id="deptExportStatus" style="font-size:13px;color:#f59e0b;min-height:20px;margin-bottom:10px;text-align:center"></div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-secondary" onclick="closeDeptExportModal()">ביטול</button>
+      <button class="modal-btn modal-btn-primary"   onclick="doDeptExport()">📥 הורד</button>
     </div>
   </div>
 </div>
