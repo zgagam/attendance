@@ -620,6 +620,11 @@ window.renderEmployees = function() {
 window.toggleEmp = async function(id) {
   if (currentRole === 'viewer') { toast('👁️ מצב צפייה בלבד — עריכה אינה מורשית'); return; }
   if (dayClosedAt && currentRole !== 'hr') { toast('⛔ יום העבודה נסגר'); return; }
+  if (attendance[id]) {
+    const emp = EMPLOYEES.find(e => e.id === id);
+    const name = emp ? emp.first_name + ' ' + emp.last_name : 'עובד זה';
+    if (!confirm('האם אתה בטוח שברצונך לסמן את ' + name + ' כנעדר?')) return;
+  }
   attendance[id] = !attendance[id];
   await saveDraft();
   renderEmployees();
