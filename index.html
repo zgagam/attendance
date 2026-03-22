@@ -154,6 +154,16 @@ body{min-height:100vh;background:var(--rm-gray-light);font-family:'Segoe UI',Ari
 
 .empty{text-align:center;color:var(--rm-concrete);padding:40px 0;font-size:14px;grid-column:1/-1}
 
+/* MACHINE GRID */
+.machine-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+.machine-card{background:var(--rm-white);border:1.5px solid var(--rm-gray-mid);border-radius:13px;padding:14px 15px;cursor:pointer;transition:all 0.18s;user-select:none;box-shadow:var(--shadow-sm)}
+.machine-card:hover{background:var(--rm-orange-light);border-color:var(--rm-orange);transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.machine-name{font-weight:700;font-size:14px;color:var(--rm-text);margin-bottom:4px}
+.machine-count{font-size:12px;color:var(--rm-text-soft)}
+.machine-present{margin-top:6px;font-size:11px;color:var(--rm-green);font-weight:600}
+.machine-back-btn{background:var(--rm-gray-light);border:1.5px solid var(--rm-gray-mid);color:var(--rm-text-soft);border-radius:8px;padding:7px 13px;cursor:pointer;font-size:13px;flex-shrink:0;font-family:inherit;margin-bottom:14px}
+.emp-machine-tag{font-size:10px;color:var(--rm-purple);background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:4px;padding:1px 6px;margin-top:2px;display:inline-block}
+
 /* HR Actions */
 .hr-actions{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
 .btn-close-day{padding:11px 22px;border-radius:9px;border:none;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit;background:linear-gradient(135deg,var(--rm-orange),var(--rm-orange-dark));color:#fff;white-space:nowrap;box-shadow:0 4px 14px rgba(232,98,10,0.35);transition:all 0.2s}
@@ -276,6 +286,13 @@ body{min-height:100vh;background:var(--rm-gray-light);font-family:'Segoe UI',Ari
         </div>
       </div>
 
+      <!-- Machine selection panel (מכונות dept only) -->
+      <div id="machinePanel" style="display:none">
+        <div style="font-size:15px;font-weight:700;color:var(--rm-text);margin-bottom:10px">בחר מכונה</div>
+        <div class="machine-grid" id="machineGrid"></div>
+        <hr style="border:none;border-top:1.5px solid var(--rm-gray-mid);margin:4px 0 14px">
+      </div>
+
       <div id="empControls">
         <div class="controls">
           <input class="search-box" id="searchBox" type="text" placeholder="חיפוש שם או מס׳ עובד..." oninput="renderEmployees()"/>
@@ -376,8 +393,24 @@ let attendance   = {};
 let submitted    = {};
 let dayClosedAt  = null;
 let currentDept  = null;
+let currentMachine = null; // null = הצג הכל, string = מכונה נבחרת
 let filterStatus = 'all';
 let currentRole  = null;
+
+// שיוך ברירת מחדל עובד→מכונה (נטען/נשמר ב-Firebase תחת 'machineMap')
+let machineMap = {
+  226:'תיקונים',441:'ערבל',449:'משמרת לילה',616:'ויברציה',626:'מנהל מכונות',
+  648:'שליסלבאואר',690:'משמרת לילה',704:'בסר',1283638:'שליסלבאואר',1283639:'שליסלבאואר',
+  1283954:'ויברומטיק',1285786:'תחנה 11',1285790:'ויברומטיק',1285878:'אפיליון',
+  1285988:'MBK LARGE',1287065:'תחנה 11',1287071:'משמרת לילה',1287404:'ערבל',
+  1287405:'תחנה 11',22210005:'שליסלבאואר',22210006:'שליסלבאואר',22210007:'מלגזן ויברומטיק',
+  22210009:'מלגזן קולה חוליות',22210010:'מלגזן שליסלבאואר',33310007:'רוטומטיק',
+  33310008:'שליסלבאואר',55510018:'מיני',55510050:'ויברציה',55510053:'ויברציה',
+  55510056:'ויברציה',55510060:'רוטומטיק',55510069:'ויברציה',55510084:'רוטומטיק',
+  55510089:'ויברומטיק',55510093:'עובד נקיון',55510094:'מיני',55510103:'שליסלבאואר',
+  55510104:'תיקונים',77710075:'מיני',77710076:'אפיליון',77710077:'שליסלבאואר',
+  77710086:'MBK SMALL'
+};
 
 // ── Storage keys ──────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0,10); // YYYY-MM-DD
@@ -394,6 +427,12 @@ async function loadData() {
   if (empData && Array.isArray(empData) && empData.length > 0) {
     EMPLOYEES.length = 0;
     empData.forEach(e => EMPLOYEES.push(e));
+  }
+  // Load machineMap from Firebase (overrides defaults)
+  const mapSnap = await db.ref('machineMap').once('value');
+  const mapData = mapSnap.val();
+  if (mapData && typeof mapData === 'object') {
+    Object.assign(machineMap, mapData);
   }
   submitted   = (await storageGet(KEY_SUBMITTED())) || {};
   attendance  = (await storageGet(KEY_DRAFT()))     || {};
@@ -537,7 +576,7 @@ function renderDepts() {
 }
 
 window.openDept = function(dept) {
-  currentDept = dept; filterStatus = 'all';
+  currentDept = dept; filterStatus = 'all'; currentMachine = null;
   const sb = document.getElementById('searchBox');
   if (sb) sb.value = '';
   document.getElementById('empDeptTitle').textContent = dept;
@@ -549,7 +588,56 @@ window.openDept = function(dept) {
     document.getElementById('submitPanel').style.display  = 'block';
     document.getElementById('empControls').style.display  = 'block';
   }
+  // מחלקת מכונות — הצג גריד מכונות
+  if (dept === 'מכונות' && currentRole === 'manager') {
+    document.getElementById('machinePanel').style.display = 'block';
+    renderMachineGrid();
+  } else {
+    document.getElementById('machinePanel').style.display = 'none';
+  }
   showPage('emp');
+};
+
+// ── Machine Grid ──────────────────────────────────────────────────────────
+function getMachines() {
+  const set = new Set();
+  EMPLOYEES.filter(e => e.department === 'מכונות').forEach(e => {
+    if (machineMap[e.id]) set.add(machineMap[e.id]);
+    else set.add('ללא שיוך');
+  });
+  return [...set].sort();
+}
+
+window.renderMachineGrid = function() {
+  const machines = getMachines();
+  const sourceData = attendance;
+  const grid = document.getElementById('machineGrid');
+  grid.innerHTML = machines.map(machine => {
+    const emps = EMPLOYEES.filter(e => e.department === 'מכונות' &&
+      (machineMap[e.id] === machine || (machine === 'ללא שיוך' && !machineMap[e.id])));
+    const present = emps.filter(e => sourceData[e.id]).length;
+    const isSelected = currentMachine === machine;
+    return `<div class="machine-card${isSelected?' selected':''}"
+      style="${isSelected?'background:var(--rm-orange-light);border-color:var(--rm-orange);':''}"
+      onclick="selectMachine('${machine.replace(/'/g,"\\'")}')">
+      <div class="machine-name">⚙️ ${machine}</div>
+      <div class="machine-count">${emps.length} עובדים</div>
+      <div class="machine-present">✓ ${present} נוכחים</div>
+    </div>`;
+  }).join('') +
+  `<div class="machine-card${currentMachine===null?' selected':''}"
+    style="${currentMachine===null?'background:var(--rm-orange-light);border-color:var(--rm-orange);':''}"
+    onclick="selectMachine(null)">
+    <div class="machine-name">👥 כל העובדים</div>
+    <div class="machine-count">${EMPLOYEES.filter(e=>e.department==='מכונות').length} עובדים</div>
+    <div class="machine-present">✓ ${EMPLOYEES.filter(e=>e.department==='מכונות'&&sourceData[e.id]).length} נוכחים</div>
+  </div>`;
+};
+
+window.selectMachine = function(machine) {
+  currentMachine = machine;
+  renderMachineGrid();
+  renderEmployees();
 };
 
 // ── Employee page ─────────────────────────────────────────────────────────
@@ -572,6 +660,15 @@ window.renderEmployees = function() {
 
   const search = (document.getElementById('searchBox')?.value||'').trim().toLowerCase();
   let list = EMPLOYEES.filter(e => e.department === currentDept);
+
+  // סינון לפי מכונה נבחרת (רק במחלקת מכונות)
+  if (currentDept === 'מכונות' && currentMachine !== null) {
+    list = list.filter(e => {
+      const m = machineMap[e.id];
+      return currentMachine === 'ללא שיוך' ? !m : m === currentMachine;
+    });
+  }
+
   if (search) list = list.filter(e =>
     (e.first_name+' '+e.last_name).toLowerCase().includes(search) || String(e.id).includes(search));
   if (filterStatus==='present') list = list.filter(e =>  sourceData[e.id]);
@@ -600,16 +697,22 @@ window.renderEmployees = function() {
     }
   }
 
+  // עדכן גריד מכונות אם פתוח
+  if (currentDept === 'מכונות' && currentRole === 'manager') renderMachineGrid();
+
   const grid = document.getElementById('empGrid');
   if (!list.length) { grid.innerHTML = '<div class="empty">לא נמצאו עובדים</div>'; return; }
   grid.innerHTML = list.map(emp => {
     const present = !!sourceData[emp.id];
+    const machine = currentDept === 'מכונות' ? (machineMap[emp.id] || '') : '';
+    const machineTag = machine ? `<div class="emp-machine-tag">⚙️ ${machine}</div>` : '';
     return `<div class="emp-card ${present?'present':''} ${isReadonly?'readonly':''}"
       ${isReadonly?'':'onclick="toggleEmp('+emp.id+')"'}>
       <div class="emp-avatar">${present?'✓':''}</div>
       <div class="emp-info">
         <div class="emp-name">${emp.first_name} ${emp.last_name}</div>
         <div class="emp-id">מס׳ ${emp.id}</div>
+        ${machineTag}
       </div>
       <div class="emp-status">${present?'נוכח':'נעדר'}</div>
     </div>`;
@@ -620,11 +723,6 @@ window.renderEmployees = function() {
 window.toggleEmp = async function(id) {
   if (currentRole === 'viewer') { toast('👁️ מצב צפייה בלבד — עריכה אינה מורשית'); return; }
   if (dayClosedAt && currentRole !== 'hr') { toast('⛔ יום העבודה נסגר'); return; }
-  if (attendance[id]) {
-    const emp = EMPLOYEES.find(e => e.id === id);
-    const name = emp ? emp.first_name + ' ' + emp.last_name : 'עובד זה';
-    if (!confirm('האם אתה בטוח שברצונך לסמן את ' + name + ' כנעדר?')) return;
-  }
   attendance[id] = !attendance[id];
   await saveDraft();
   renderEmployees();
@@ -869,7 +967,7 @@ window.doExport = async function() {
       }
       if (dates.length > 31) { statusEl.textContent = '⚠️ טווח מקסימלי הוא 31 יום'; return; }
     }
-    const rows = [['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה','סטטוס','שעת דיווח']];
+    const rows = [['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה','מכונה','סטטוס','שעת דיווח']];
     for (const date of dates) {
       const snap = await db.ref('data/' + date + '/submitted').once('value');
       const dayData = snap.val() || {};
@@ -878,7 +976,8 @@ window.doExport = async function() {
         const s = dayData[dept];
         EMPLOYEES.filter(e => e.department === dept).forEach(emp => {
           const isPresent = s ? !!(s.attendance && s.attendance[emp.id]) : null;
-          rows.push([dateStr, dept, emp.id, emp.first_name, emp.last_name,
+          const machine = dept === 'מכונות' ? (machineMap[emp.id] || '') : '';
+          rows.push([dateStr, dept, emp.id, emp.first_name, emp.last_name, machine,
             isPresent === null ? 'לא דווח' : isPresent ? 'נוכח' : 'נעדר',
             s ? timeStr(s.time) : '']);
         });
@@ -951,7 +1050,11 @@ window.doDeptExport = async function() {
     }
 
     const empList = EMPLOYEES.filter(e => e.department === dept);
-    const rows = [['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה','סטטוס','שעת דיווח','חתימה']];
+    const isMachines = dept === 'מכונות';
+    const headers = ['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה'];
+    if (isMachines) headers.push('מכונה');
+    headers.push('סטטוס','שעת דיווח','חתימה');
+    const rows = [headers];
 
     for (const date of dates) {
       const snap = await db.ref('data/' + date + '/submitted').once('value');
@@ -972,7 +1075,10 @@ window.doDeptExport = async function() {
           status = 'לא דווח';
           reportTime = '';
         }
-        rows.push([dateLabel, dept, emp.id, emp.first_name, emp.last_name, status, reportTime, '']);
+        const row = [dateLabel, dept, emp.id, emp.first_name, emp.last_name];
+        if (isMachines) row.push(machineMap[emp.id] || '');
+        row.push(status, reportTime, '');
+        rows.push(row);
       });
       // summary line per day
       if (dates.length > 1) {
@@ -1021,13 +1127,48 @@ window.openManageModal = function() {
 window.closeManageModal = function() { document.getElementById('manageModal').style.display = 'none'; };
 
 window.switchManageTab = function(tab) {
-  const tabEls = {add:'manageTabAdd', remove:'manageTabRemove', upload:'manageTabUpload'};
-  const btnEls = {add:'tabAddEmp', remove:'tabRemoveEmp', upload:'tabUploadEmp'};
+  const tabEls = {add:'manageTabAdd', remove:'manageTabRemove', upload:'manageTabUpload', machine:'manageTabMachine'};
+  const btnEls = {add:'tabAddEmp', remove:'tabRemoveEmp', upload:'tabUploadEmp', machine:'tabMachineEmp'};
   Object.keys(tabEls).forEach(t => {
     document.getElementById(tabEls[t]).style.display = t===tab ? 'block' : 'none';
     document.getElementById(btnEls[t]).classList.toggle('active', t===tab);
   });
   if (tab==='remove') window.renderRemoveList();
+  if (tab==='machine') window.renderMachineAssignList();
+};
+
+// ── Machine assignment (HR) ───────────────────────────────────────────────
+const MACHINE_OPTIONS = ['MBK LARGE','MBK SMALL','אפיליון','בסר','ויברומטיק','ויברציה','מיני',
+  'מלגזן ויברומטיק','מלגזן קולה חוליות','מלגזן שליסלבאואר','מנהל מכונות','משמרת לילה',
+  'עובד נקיון','ערבל','רוטומטיק','שליסלבאואר','תחנה 11','תיקונים'];
+
+window.renderMachineAssignList = function() {
+  const search = (document.getElementById('empSearchMachine')?.value||'').trim().toLowerCase();
+  let list = EMPLOYEES.filter(e => e.department === 'מכונות');
+  if (search) list = list.filter(e =>
+    (e.first_name+' '+e.last_name).toLowerCase().includes(search) || String(e.id).includes(search));
+  const opts = MACHINE_OPTIONS.map(m => `<option value="${m}">${m}</option>`).join('');
+  document.getElementById('machineAssignList').innerHTML = list.map(e => {
+    const current = machineMap[e.id] || '';
+    return `<div class="emp-list-item" style="flex-wrap:wrap;gap:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${e.first_name} ${e.last_name}</div>
+        <div style="font-size:11px;color:#64748b">#${e.id}</div>
+      </div>
+      <select style="padding:4px 8px;border-radius:6px;border:1.5px solid var(--rm-gray-mid);font-size:13px;font-family:inherit;background:var(--rm-white)"
+        onchange="assignMachine(${e.id}, this.value)">
+        <option value="">— ללא שיוך —</option>
+        ${MACHINE_OPTIONS.map(m => `<option value="${m}"${m===current?' selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('') || '<div style="color:#64748b;font-size:13px;text-align:center;padding:16px">לא נמצאו עובדים</div>';
+};
+
+window.assignMachine = async function(empId, machine) {
+  if (machine) machineMap[empId] = machine;
+  else delete machineMap[empId];
+  await db.ref('machineMap').set(machineMap);
+  toast('✅ שיוך עודכן');
 };
 
 window.addEmployee = async function() {
@@ -1179,6 +1320,7 @@ window.uploadExcel = async function() {
       <button class="tab-btn active" id="tabAddEmp" onclick="switchManageTab('add')">➕ הוסף עובד</button>
       <button class="tab-btn" id="tabRemoveEmp" onclick="switchManageTab('remove')">➖ הסר עובד</button>
       <button class="tab-btn" id="tabUploadEmp" onclick="switchManageTab('upload')">📂 העלה אקסל</button>
+      <button class="tab-btn" id="tabMachineEmp" onclick="switchManageTab('machine')">⚙️ שיוך מכונות</button>
     </div>
 
     <!-- Add tab -->
@@ -1205,6 +1347,18 @@ window.uploadExcel = async function() {
       <div class="modal-section">
         <input class="emp-search" type="text" id="empSearchRemove" placeholder="חיפוש שם או מס׳ עובד..." oninput="renderRemoveList()">
         <div id="empRemoveList" style="max-height:300px;overflow-y:auto"></div>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn modal-btn-secondary" onclick="closeManageModal()">סגור</button>
+      </div>
+    </div>
+
+    <!-- Machine assignment tab -->
+    <div id="manageTabMachine" style="display:none">
+      <div class="modal-section">
+        <div class="modal-section-title">שיוך עובדי מכונות למכונה</div>
+        <input class="emp-search" type="text" id="empSearchMachine" placeholder="חיפוש שם או מס׳ עובד..." oninput="renderMachineAssignList()">
+        <div id="machineAssignList" style="max-height:340px;overflow-y:auto"></div>
       </div>
       <div class="modal-btns">
         <button class="modal-btn modal-btn-secondary" onclick="closeManageModal()">סגור</button>
