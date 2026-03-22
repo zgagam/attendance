@@ -154,14 +154,14 @@ body{min-height:100vh;background:var(--rm-gray-light);font-family:'Segoe UI',Ari
 
 .empty{text-align:center;color:var(--rm-concrete);padding:40px 0;font-size:14px;grid-column:1/-1}
 
-/* MACHINE GRID */
-.machine-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:16px}
-.machine-card{background:var(--rm-white);border:1.5px solid var(--rm-gray-mid);border-radius:13px;padding:14px 15px;cursor:pointer;transition:all 0.18s;user-select:none;box-shadow:var(--shadow-sm)}
-.machine-card:hover{background:var(--rm-orange-light);border-color:var(--rm-orange);transform:translateY(-2px);box-shadow:var(--shadow-md)}
-.machine-name{font-weight:700;font-size:14px;color:var(--rm-text);margin-bottom:4px}
-.machine-count{font-size:12px;color:var(--rm-text-soft)}
-.machine-present{margin-top:6px;font-size:11px;color:var(--rm-green);font-weight:600}
-.machine-back-btn{background:var(--rm-gray-light);border:1.5px solid var(--rm-gray-mid);color:var(--rm-text-soft);border-radius:8px;padding:7px 13px;cursor:pointer;font-size:13px;flex-shrink:0;font-family:inherit;margin-bottom:14px}
+/* MACHINE CHIPS */
+.machine-chips-wrap{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:13px}
+.machine-chip{display:inline-flex;flex-direction:column;align-items:center;padding:6px 13px;border-radius:20px;border:1.5px solid var(--rm-gray-mid);background:var(--rm-white);cursor:pointer;transition:all 0.15s;user-select:none;box-shadow:var(--shadow-sm);min-width:70px}
+.machine-chip:hover{border-color:var(--rm-orange);background:var(--rm-orange-light)}
+.machine-chip.active{border-color:var(--rm-orange);background:var(--rm-orange-light);box-shadow:0 2px 8px rgba(232,98,10,0.2)}
+.machine-chip-name{font-size:12px;font-weight:700;color:var(--rm-text);white-space:nowrap}
+.machine-chip.active .machine-chip-name{color:var(--rm-orange-dark)}
+.machine-chip-count{font-size:10px;color:var(--rm-green);font-weight:600;margin-top:1px}
 .emp-machine-tag{font-size:10px;color:var(--rm-purple);background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:4px;padding:1px 6px;margin-top:2px;display:inline-block}
 
 /* HR Actions */
@@ -288,9 +288,7 @@ body{min-height:100vh;background:var(--rm-gray-light);font-family:'Segoe UI',Ari
 
       <!-- Machine selection panel (מכונות dept only) -->
       <div id="machinePanel" style="display:none">
-        <div style="font-size:15px;font-weight:700;color:var(--rm-text);margin-bottom:10px">בחר מכונה</div>
-        <div class="machine-grid" id="machineGrid"></div>
-        <hr style="border:none;border-top:1.5px solid var(--rm-gray-mid);margin:4px 0 14px">
+        <div class="machine-chips-wrap" id="machineChips"></div>
       </div>
 
       <div id="empControls">
@@ -399,16 +397,16 @@ let currentRole  = null;
 
 // שיוך ברירת מחדל עובד→מכונה (נטען/נשמר ב-Firebase תחת 'machineMap')
 let machineMap = {
-  226:'תיקונים',441:'ערבל',449:'משמרת לילה',616:'ויברציה',626:'מנהל מכונות',
-  648:'שליסלבאואר',690:'משמרת לילה',704:'בסר',1283638:'שליסלבאואר',1283639:'שליסלבאואר',
-  1283954:'ויברומטיק',1285786:'תחנה 11',1285790:'ויברומטיק',1285878:'אפיליון',
-  1285988:'MBK LARGE',1287065:'תחנה 11',1287071:'משמרת לילה',1287404:'ערבל',
-  1287405:'תחנה 11',22210005:'שליסלבאואר',22210006:'שליסלבאואר',22210007:'מלגזן ויברומטיק',
-  22210009:'מלגזן קולה חוליות',22210010:'מלגזן שליסלבאואר',33310007:'רוטומטיק',
-  33310008:'שליסלבאואר',55510018:'מיני',55510050:'ויברציה',55510053:'ויברציה',
-  55510056:'ויברציה',55510060:'רוטומטיק',55510069:'ויברציה',55510084:'רוטומטיק',
-  55510089:'ויברומטיק',55510093:'עובד נקיון',55510094:'מיני',55510103:'שליסלבאואר',
-  55510104:'תיקונים',77710075:'מיני',77710076:'אפיליון',77710077:'שליסלבאואר',
+  226:'תיקונים', 441:'ערבל', 449:'משמרת לילה', 616:'ויברציה', 626:'מנהל מכונות',
+  648:'שליסלבאואר', 690:'משמרת לילה', 704:'בסר', 1283638:'שליסלבאואר', 1283639:'שליסלבאואר',
+  1283954:'ויברומטיק', 1285786:'תחנה 11', 1285790:'ויברומטיק', 1285878:'אפיליון',
+  1285988:'MBK LARGE', 1287065:'תחנה 11', 1287071:'משמרת לילה', 1287404:'ערבל',
+  1287405:'תחנה 11', 22210005:'שליסלבאואר', 22210006:'שליסלבאואר', 22210007:'ויברומטיק',
+  22210009:'קולה חוליות', 22210010:'שליסלבאואר', 33310007:'רוטומטיק',
+  33310008:'שליסלבאואר', 55510018:'מיני', 55510050:'ויברציה', 55510053:'ויברציה',
+  55510056:'ויברציה', 55510060:'רוטומטיק', 55510069:'ויברציה', 55510084:'רוטומטיק',
+  55510089:'קולה חוליות', 55510093:'עובד נקיון', 55510094:'מיני', 55510103:'שליסלבאואר',
+  55510104:'תיקונים', 77710075:'מיני', 77710076:'אפיליון', 77710077:'שליסלבאואר',
   77710086:'MBK SMALL'
 };
 
@@ -432,7 +430,20 @@ async function loadData() {
   const mapSnap = await db.ref('machineMap').once('value');
   const mapData = mapSnap.val();
   if (mapData && typeof mapData === 'object') {
-    Object.assign(machineMap, mapData);
+    // בדוק אם Firebase מכיל ערכים ישנים שלא תקינים (שמות מכונות שלא קיימים ב-MACHINE_OPTIONS)
+    // אם כן — כתוב את הקוד הנוכחי ל-Firebase ודרוס הכל
+    const validMachines = new Set(MACHINE_OPTIONS);
+    const hasStaleValues = Object.values(mapData).some(v => v && !validMachines.has(v));
+    if (hasStaleValues) {
+      // יש ערכים ישנים — כתוב את השיוך הנוכחי מהקוד ל-Firebase
+      await db.ref('machineMap').set(machineMap);
+    } else {
+      // Firebase תקין — מזג (ה-HR יכול לשנות ידנית)
+      Object.assign(machineMap, mapData);
+    }
+  } else {
+    // אין נתונים ב-Firebase — כתוב את ברירת המחדל
+    await db.ref('machineMap').set(machineMap);
   }
   submitted   = (await storageGet(KEY_SUBMITTED())) || {};
   attendance  = (await storageGet(KEY_DRAFT()))     || {};
@@ -611,31 +622,34 @@ function getMachines() {
 window.renderMachineGrid = function() {
   const machines = getMachines();
   const sourceData = attendance;
-  const grid = document.getElementById('machineGrid');
-  grid.innerHTML = machines.map(machine => {
-    const emps = EMPLOYEES.filter(e => e.department === 'מכונות' &&
-      (machineMap[e.id] === machine || (machine === 'ללא שיוך' && !machineMap[e.id])));
-    const present = emps.filter(e => sourceData[e.id]).length;
-    const isSelected = currentMachine === machine;
-    return `<div class="machine-card${isSelected?' selected':''}"
-      style="${isSelected?'background:var(--rm-orange-light);border-color:var(--rm-orange);':''}"
-      onclick="selectMachine('${machine.replace(/'/g,"\\'")}')">
-      <div class="machine-name">⚙️ ${machine}</div>
-      <div class="machine-count">${emps.length} עובדים</div>
-      <div class="machine-present">✓ ${present} נוכחים</div>
-    </div>`;
-  }).join('') +
-  `<div class="machine-card${currentMachine===null?' selected':''}"
-    style="${currentMachine===null?'background:var(--rm-orange-light);border-color:var(--rm-orange);':''}"
-    onclick="selectMachine(null)">
-    <div class="machine-name">👥 כל העובדים</div>
-    <div class="machine-count">${EMPLOYEES.filter(e=>e.department==='מכונות').length} עובדים</div>
-    <div class="machine-present">✓ ${EMPLOYEES.filter(e=>e.department==='מכונות'&&sourceData[e.id]).length} נוכחים</div>
-  </div>`;
+  const container = document.getElementById('machineChips');
+  if (!container) return;
+
+  // "הכל" chip
+  const allEmps = EMPLOYEES.filter(e => e.department === 'מכונות');
+  const allPresent = allEmps.filter(e => sourceData[e.id]).length;
+  const allActive = currentMachine === null;
+
+  container.innerHTML =
+    `<div class="machine-chip${allActive?' active':''}" onclick="selectMachine(null)">
+      <span class="machine-chip-name">👥 הכל</span>
+      <span class="machine-chip-count">✓ ${allPresent}/${allEmps.length}</span>
+    </div>` +
+    machines.map(machine => {
+      const emps = EMPLOYEES.filter(e => e.department === 'מכונות' &&
+        (machineMap[e.id] === machine || (machine === 'ללא שיוך' && !machineMap[e.id])));
+      const present = emps.filter(e => sourceData[e.id]).length;
+      const isActive = currentMachine === machine;
+      const escapedName = machine.replace(/'/g, "\\'");
+      return `<div class="machine-chip${isActive?' active':''}" onclick="selectMachine('${escapedName}')">
+        <span class="machine-chip-name">${machine}</span>
+        <span class="machine-chip-count">✓ ${present}/${emps.length}</span>
+      </div>`;
+    }).join('');
 };
 
 window.selectMachine = function(machine) {
-  currentMachine = machine;
+  currentMachine = machine || null;
   renderMachineGrid();
   renderEmployees();
 };
@@ -1138,9 +1152,9 @@ window.switchManageTab = function(tab) {
 };
 
 // ── Machine assignment (HR) ───────────────────────────────────────────────
-const MACHINE_OPTIONS = ['MBK LARGE','MBK SMALL','אפיליון','בסר','ויברומטיק','ויברציה','מיני',
-  'מלגזן ויברומטיק','מלגזן קולה חוליות','מלגזן שליסלבאואר','מנהל מכונות','משמרת לילה',
-  'עובד נקיון','ערבל','רוטומטיק','שליסלבאואר','תחנה 11','תיקונים'];
+const MACHINE_OPTIONS = ['MBK LARGE','MBK SMALL','אפיליון','בסר','ויברומטיק','ויברציה',
+  'מיני','מנהל מכונות','משמרת לילה','עובד נקיון','ערבל','קולה חוליות',
+  'רוטומטיק','שליסלבאואר','תחנה 11','תיקונים'];
 
 window.renderMachineAssignList = function() {
   const search = (document.getElementById('empSearchMachine')?.value||'').trim().toLowerCase();
