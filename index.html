@@ -531,6 +531,14 @@ function getDeptStats(dept, useSubmitted = false) {
 }
 function pctColor(pct) { return pct>=80?'#4ade80':pct>=50?'#fbbf24':pct>0?'#60a5fa':'rgba(255,255,255,0.2)'; }
 function pctClass(pct) { return pct>=80?'pct-green':pct>=50?'pct-yellow':'pct-red'; }
+function fmtDate(d) { const dd=String(d.getDate()).padStart(2,'0'), mm=String(d.getMonth()+1).padStart(2,'0'), yyyy=d.getFullYear(); return `${dd}/${mm}/${yyyy}`; }
+async function downloadAsXLSX(rows, filename) {
+  const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'נוכחות');
+  XLSX.writeFile(wb, filename);
+}
 function timeStr(iso) { return iso ? new Date(iso).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) : ''; }
 
 function updateTotalBadge() {
@@ -800,8 +808,8 @@ window.reopenDay = async function() {
 };
 
 // ── Export Excel ──────────────────────────────────────────────────────────
-window.exportExcel = function() {
-  const dateStr = new Date().toLocaleDateString('he-IL');
+window.exportExcel = async function() {
+  const dateStr = fmtDate(new Date());
   // Build CSV with BOM for Hebrew support in Excel
   const rows = [['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה','סטטוס','שעת דיווח']];
   DEPARTMENTS.forEach(dept => {
@@ -821,14 +829,7 @@ window.exportExcel = function() {
       ]);
     });
   });
-  const csv = '\uFEFF' + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
-  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = `נוכחות_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadAsXLSX(rows, `נוכחות_${new Date().toISOString().slice(0,10)}.xlsx`);
   toast('📥 קובץ Excel הורד בהצלחה');
 };
 
@@ -985,7 +986,7 @@ window.doExport = async function() {
     for (const date of dates) {
       const snap = await db.ref('data/' + date + '/submitted').once('value');
       const dayData = snap.val() || {};
-      const dateStr = new Date(date + 'T12:00:00').toLocaleDateString('he-IL');
+      const dateStr = fmtDate(new Date(date + 'T12:00:00'));
       DEPARTMENTS.forEach(dept => {
         const s = dayData[dept];
         EMPLOYEES.filter(e => e.department === dept).forEach(emp => {
@@ -998,15 +999,8 @@ window.doExport = async function() {
       });
     }
     statusEl.textContent = '';
-    const csv = '\uFEFF' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
-    const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
     const label = dates.length===1 ? dates[0] : dates[0] + '_עד_' + dates[dates.length-1];
-    a.download = 'נוכחות_' + label + '.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadAsXLSX(rows, 'נוכחות_' + label + '.xlsx');
     window.closeExportModal();
     toast('📥 קובץ Excel הורד בהצלחה');
   } catch(e) {
@@ -1074,7 +1068,7 @@ window.doDeptExport = async function() {
       const snap = await db.ref('data/' + date + '/submitted').once('value');
       const dayData = snap.val() || {};
       const s = dayData[dept];
-      const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('he-IL');
+      const dateLabel = fmtDate(new Date(date + 'T12:00:00'));
       empList.forEach(emp => {
         let status, reportTime;
         if (s) {
@@ -1114,15 +1108,8 @@ window.doDeptExport = async function() {
     }
 
     statusEl.textContent = '';
-    const csv = '\uFEFF' + rows.map(r => r.map(c => '"' + String(c || '').replace(/"/g,'""') + '"').join(',')).join('\r\n');
-    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
     const label = dates.length === 1 ? dates[0] : dates[0] + '_עד_' + dates[dates.length-1];
-    a.download = 'נוכחות_' + dept + '_' + label + '.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadAsXLSX(rows, 'נוכחות_' + dept + '_' + label + '.xlsx');
     window.closeDeptExportModal();
     toast('📥 קובץ ' + dept + ' הורד בהצלחה');
   } catch(e) {
