@@ -534,10 +534,18 @@ function pctClass(pct) { return pct>=80?'pct-green':pct>=50?'pct-yellow':'pct-re
 function fmtDate(d) { const dd=String(d.getDate()).padStart(2,'0'), mm=String(d.getMonth()+1).padStart(2,'0'), yyyy=d.getFullYear(); return `${dd}/${mm}/${yyyy}`; }
 async function downloadAsXLSX(rows, filename) {
   const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = XLSX.utils.aoa_to_sheet(rows, {cellDates: true});
+  // עיצוב עמודת תאריך (עמודה A) כ-DD/MM/YYYY
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let R = range.s.r + 1; R <= range.e.r; R++) {
+    const cellRef = XLSX.utils.encode_cell({r: R, c: 0});
+    if (ws[cellRef] && ws[cellRef].t === 'd') {
+      ws[cellRef].z = 'DD/MM/YYYY';
+    }
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'נוכחות');
-  XLSX.writeFile(wb, filename);
+  XLSX.writeFile(wb, filename, {cellDates: true});
 }
 function timeStr(iso) { return iso ? new Date(iso).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) : ''; }
 
@@ -809,8 +817,8 @@ window.reopenDay = async function() {
 
 // ── Export Excel ──────────────────────────────────────────────────────────
 window.exportExcel = async function() {
-  const dateStr = fmtDate(new Date());
-  // Build CSV with BOM for Hebrew support in Excel
+  const dateVal = new Date();
+  // Build rows for Hebrew support in Excel
   const rows = [['תאריך','מחלקה','מס׳ עובד','שם פרטי','שם משפחה','סטטוס','שעת דיווח']];
   DEPARTMENTS.forEach(dept => {
     const s = submitted[dept];
@@ -819,7 +827,7 @@ window.exportExcel = async function() {
       const isPresent = s ? (s.attendance && s.attendance[emp.id]) : !!attendance[emp.id];
       const reportTime = s ? timeStr(s.time) : '';
       rows.push([
-        dateStr,
+        dateVal,
         dept,
         emp.id,
         emp.first_name,
@@ -986,13 +994,13 @@ window.doExport = async function() {
     for (const date of dates) {
       const snap = await db.ref('data/' + date + '/submitted').once('value');
       const dayData = snap.val() || {};
-      const dateStr = fmtDate(new Date(date + 'T12:00:00'));
+      const dateVal = new Date(date + 'T12:00:00');
       DEPARTMENTS.forEach(dept => {
         const s = dayData[dept];
         EMPLOYEES.filter(e => e.department === dept).forEach(emp => {
           const isPresent = s ? !!(s.attendance && s.attendance[emp.id]) : null;
           const machine = dept === 'מכונות' ? (machineMap[emp.id] || '') : '';
-          rows.push([dateStr, dept, emp.id, emp.first_name, emp.last_name, machine,
+          rows.push([dateVal, dept, emp.id, emp.first_name, emp.last_name, machine,
             isPresent === null ? 'לא דווח' : isPresent ? 'נוכח' : 'נעדר',
             s ? timeStr(s.time) : '']);
         });
@@ -1068,7 +1076,7 @@ window.doDeptExport = async function() {
       const snap = await db.ref('data/' + date + '/submitted').once('value');
       const dayData = snap.val() || {};
       const s = dayData[dept];
-      const dateLabel = fmtDate(new Date(date + 'T12:00:00'));
+      const dateLabel = new Date(date + 'T12:00:00');
       empList.forEach(emp => {
         let status, reportTime;
         if (s) {
