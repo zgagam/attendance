@@ -1136,14 +1136,16 @@ window.openManageModal = function() {
 window.closeManageModal = function() { document.getElementById('manageModal').style.display = 'none'; };
 
 window.switchManageTab = function(tab) {
-  const tabEls = {add:'manageTabAdd', remove:'manageTabRemove', upload:'manageTabUpload', machine:'manageTabMachine'};
-  const btnEls = {add:'tabAddEmp', remove:'tabRemoveEmp', upload:'tabUploadEmp', machine:'tabMachineEmp'};
+  const tabEls = {add:'manageTabAdd', remove:'manageTabRemove', upload:'manageTabUpload', machine:'manageTabMachine', transfer:'manageTabTransfer', depts:'manageTabDepts'};
+  const btnEls = {add:'tabAddEmp', remove:'tabRemoveEmp', upload:'tabUploadEmp', machine:'tabMachineEmp', transfer:'tabTransferEmp', depts:'tabManageDepts'};
   Object.keys(tabEls).forEach(t => {
     document.getElementById(tabEls[t]).style.display = t===tab ? 'block' : 'none';
     document.getElementById(btnEls[t]).classList.toggle('active', t===tab);
   });
-  if (tab==='remove') window.renderRemoveList();
-  if (tab==='machine') window.renderMachineAssignList();
+  if (tab==='remove')   window.renderRemoveList();
+  if (tab==='machine')  window.renderMachineAssignList();
+  if (tab==='transfer') { window.renderTransferList(); cancelTransfer(); }
+  if (tab==='depts')    window.refreshDeptSelects();
 };
 
 // ── Machine assignment (HR) ───────────────────────────────────────────────
@@ -1259,7 +1261,124 @@ window.uploadExcel = async function() {
   }
 };
 
-</script>
+// ── Transfer Employee ─────────────────────────────────────────────────────
+let transferEmpId = null;
+
+window.renderTransferList = function() {
+  const search = (document.getElementById('empSearchTransfer')?.value||'').trim().toLowerCase();
+  let list = EMPLOYEES;
+  if (search) list = list.filter(e =>
+    (e.first_name+' '+e.last_name).toLowerCase().includes(search) || String(e.id).includes(search));
+  document.getElementById('empTransferList').innerHTML = list.slice(0,60).map(e =>
+    `<div class="emp-list-item">
+      <span>${e.first_name} ${e.last_name}
+        <span style="color:#64748b;font-size:11px"> #${e.id} · ${e.department}</span>
+      </span>
+      <button style="background:rgba(59,130,246,0.1);color:#2563EB;border:1px solid rgba(59,130,246,0.3);border-radius:5px;padding:3px 9px;cursor:pointer;font-size:12px;font-family:inherit"
+        onclick="selectEmpForTransfer(${e.id})">בחר</button>
+    </div>`
+  ).join('') + (list.length>60 ? `<div style="color:#64748b;font-size:12px;text-align:center;padding:8px">ועוד ${list.length-60}... צמצם חיפוש</div>` : '');
+};
+
+window.selectEmpForTransfer = function(id) {
+  const emp = EMPLOYEES.find(e => e.id === id);
+  if (!emp) return;
+  transferEmpId = id;
+  document.getElementById('transferEmpLabel').textContent = `העבר: ${emp.first_name} ${emp.last_name} (כעת: ${emp.department})`;
+  const sel = document.getElementById('transferDeptSelect');
+  sel.innerHTML = DEPARTMENTS.filter(d => d !== emp.department)
+    .map(d => `<option value="${d}">${d}</option>`).join('');
+  document.getElementById('transferTargetWrap').style.display = 'block';
+  document.getElementById('transferCloseBtns').style.display  = 'none';
+  document.getElementById('empTransferList').style.display    = 'none';
+  document.getElementById('empSearchTransfer').style.display  = 'none';
+};
+
+window.cancelTransfer = function() {
+  transferEmpId = null;
+  document.getElementById('transferTargetWrap').style.display = 'none';
+  document.getElementById('transferCloseBtns').style.display  = 'block';
+  document.getElementById('empTransferList').style.display    = 'block';
+  document.getElementById('empSearchTransfer').style.display  = 'block';
+};
+
+window.confirmTransfer = async function() {
+  if (!transferEmpId) return;
+  const emp = EMPLOYEES.find(e => e.id === transferEmpId);
+  if (!emp) return;
+  const targetDept = document.getElementById('transferDeptSelect').value;
+  if (!targetDept) return;
+  const from = emp.department;
+  emp.department = targetDept;
+  await saveEmployeesToFirebase();
+  cancelTransfer();
+  renderTransferList();
+  renderDepts();
+  toast(`✅ ${emp.first_name} ${emp.last_name} הועבר מ-${from} אל ${targetDept}`);
+};
+
+// ── Manage Departments ────────────────────────────────────────────────────
+window.refreshDeptSelects = function() {
+  const depts = [...new Set(EMPLOYEES.map(e => e.department))].sort();
+  ['renameDeptSelect','mergeSrcSelect','mergeDstSelect'].forEach(id => {
+    document.getElementById(id).innerHTML = depts.map(d => `<option value="${d}">${d}</option>`).join('');
+  });
+  // deleteDeptSelect — only empty depts
+  const emptyDepts = DEPARTMENTS.filter(d => !EMPLOYEES.find(e => e.department === d));
+  document.getElementById('deleteDeptSelect').innerHTML = emptyDepts.length
+    ? emptyDepts.map(d => `<option value="${d}">${d}</option>`).join('')
+    : '<option value="">— אין מחלקות ריקות —</option>';
+};
+
+window.renameDept = async function() {
+  const oldName = document.getElementById('renameDeptSelect').value;
+  const newName = document.getElementById('renameDeptNewName').value.trim();
+  if (!oldName || !newName) { toast('⚠️ יש למלא שם חדש'); return; }
+  if (newName === oldName)  { toast('⚠️ השם זהה לשם הנוכחי'); return; }
+  if (EMPLOYEES.find(e => e.department === newName)) { toast('⚠️ מחלקה בשם זה כבר קיימת'); return; }
+  // Update all employees in that dept
+  EMPLOYEES.filter(e => e.department === oldName).forEach(e => { e.department = newName; });
+  // Update DEPARTMENTS array
+  const idx = DEPARTMENTS.indexOf(oldName);
+  if (idx !== -1) DEPARTMENTS.splice(idx, 1, newName);
+  DEPARTMENTS.sort();
+  await saveEmployeesToFirebase();
+  document.getElementById('renameDeptNewName').value = '';
+  window.refreshDeptSelects();
+  renderDepts();
+  toast(`✅ מחלקה "${oldName}" שונתה ל-"${newName}"`);
+};
+
+window.mergeDepts = async function() {
+  const src = document.getElementById('mergeSrcSelect').value;
+  const dst = document.getElementById('mergeDstSelect').value;
+  if (!src || !dst) { toast('⚠️ יש לבחור שתי מחלקות'); return; }
+  if (src === dst)  { toast('⚠️ לא ניתן למזג מחלקה עם עצמה'); return; }
+  const srcCount = EMPLOYEES.filter(e => e.department === src).length;
+  if (!confirm(`מיזוג "${src}" (${srcCount} עובדים) אל "${dst}".\nעובדי "${src}" יועברו ל-"${dst}" ו-"${src}" תימחק.\nלהמשיך?`)) return;
+  EMPLOYEES.filter(e => e.department === src).forEach(e => { e.department = dst; });
+  const idx = DEPARTMENTS.indexOf(src);
+  if (idx !== -1) DEPARTMENTS.splice(idx, 1);
+  await saveEmployeesToFirebase();
+  window.refreshDeptSelects();
+  renderDepts();
+  toast(`✅ "${src}" מוזגה אל "${dst}" (${srcCount} עובדים הועברו)`);
+};
+
+window.deleteDept = async function() {
+  const dept = document.getElementById('deleteDeptSelect').value;
+  if (!dept) { toast('⚠️ אין מחלקות ריקות למחיקה'); return; }
+  const hasEmps = EMPLOYEES.find(e => e.department === dept);
+  if (hasEmps) { toast('⚠️ לא ניתן להסיר מחלקה עם עובדים'); return; }
+  if (!confirm(`למחוק את המחלקה "${dept}"?`)) return;
+  const idx = DEPARTMENTS.indexOf(dept);
+  if (idx !== -1) DEPARTMENTS.splice(idx, 1);
+  window.refreshDeptSelects();
+  renderDepts();
+  toast(`🗑️ מחלקה "${dept}" הוסרה`);
+};
+
+
 
 <!-- Export Modal -->
 <div class="modal-overlay" id="exportModal" style="display:none">
@@ -1330,6 +1449,8 @@ window.uploadExcel = async function() {
       <button class="tab-btn" id="tabRemoveEmp" onclick="switchManageTab('remove')">➖ הסר עובד</button>
       <button class="tab-btn" id="tabUploadEmp" onclick="switchManageTab('upload')">📂 העלה אקסל</button>
       <button class="tab-btn" id="tabMachineEmp" onclick="switchManageTab('machine')">⚙️ שיוך מכונות</button>
+      <button class="tab-btn" id="tabTransferEmp" onclick="switchManageTab('transfer')">🔀 העבר עובד</button>
+      <button class="tab-btn" id="tabManageDepts" onclick="switchManageTab('depts')">🏢 ניהול מחלקות</button>
     </div>
 
     <!-- Add tab -->
@@ -1374,8 +1495,59 @@ window.uploadExcel = async function() {
       </div>
     </div>
 
-    <!-- Upload tab -->
-    <div id="manageTabUpload" style="display:none">
+    <!-- Transfer tab -->
+    <div id="manageTabTransfer" style="display:none">
+      <div class="modal-section">
+        <div class="modal-section-title">העבר עובד למחלקה אחרת</div>
+        <input class="emp-search" type="text" id="empSearchTransfer" placeholder="חיפוש שם או מס׳ עובד..." oninput="renderTransferList()">
+        <div id="empTransferList" style="max-height:260px;overflow-y:auto"></div>
+      </div>
+      <div id="transferTargetWrap" style="display:none">
+        <div class="modal-section">
+          <div class="modal-section-title" id="transferEmpLabel"></div>
+          <label class="modal-label">מחלקת יעד</label>
+          <select class="modal-input" id="transferDeptSelect"></select>
+        </div>
+        <div class="modal-btns">
+          <button class="modal-btn modal-btn-secondary" onclick="cancelTransfer()">ביטול</button>
+          <button class="modal-btn modal-btn-primary" onclick="confirmTransfer()">🔀 העבר</button>
+        </div>
+      </div>
+      <div class="modal-btns" id="transferCloseBtns">
+        <button class="modal-btn modal-btn-secondary" onclick="closeManageModal()">סגור</button>
+      </div>
+    </div>
+
+    <!-- Manage Depts tab -->
+    <div id="manageTabDepts" style="display:none">
+      <div class="modal-section">
+        <div class="modal-section-title">שנה שם מחלקה</div>
+        <label class="modal-label">מחלקה קיימת</label>
+        <select class="modal-input" id="renameDeptSelect"></select>
+        <label class="modal-label">שם חדש</label>
+        <input class="modal-input" type="text" id="renameDeptNewName" placeholder="שם המחלקה החדש">
+        <button class="modal-btn modal-btn-primary" style="margin-bottom:10px" onclick="renameDept()">✏️ שנה שם</button>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title">מזג שתי מחלקות לאחת</div>
+        <label class="modal-label">מחלקה מקור (תמוזג אל היעד ותימחק)</label>
+        <select class="modal-input" id="mergeSrcSelect"></select>
+        <label class="modal-label">מחלקת יעד (תישאר)</label>
+        <select class="modal-input" id="mergeDstSelect"></select>
+        <button class="modal-btn" style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;font-weight:700;margin-bottom:4px" onclick="mergeDepts()">🔗 מזג מחלקות</button>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title">הסר מחלקה ריקה</div>
+        <label class="modal-label">ניתן להסיר רק מחלקות ללא עובדים</label>
+        <select class="modal-input" id="deleteDeptSelect"></select>
+        <button class="modal-btn" style="background:linear-gradient(135deg,#DC2626,#B91C1C);color:#fff;font-weight:700" onclick="deleteDept()">🗑️ הסר מחלקה</button>
+      </div>
+      <div class="modal-btns" style="margin-top:8px">
+        <button class="modal-btn modal-btn-secondary" onclick="closeManageModal()">סגור</button>
+      </div>
+    </div>
+
+
       <div class="modal-section">
         <div class="modal-section-title">העלה קובץ אקסל חדש</div>
         <p style="color:var(--rm-text-soft);font-size:13px;margin:0 0 12px">הקובץ חייב להכיל עמודות: מס. עובד, שם משפחה - עברית, שם פרטי - עברית, מחלקה - שם מחלקה</p>
