@@ -1380,6 +1380,8 @@ window.deleteDept = async function() {
 
 
 
+</script>
+
 <!-- Export Modal -->
 <div class="modal-overlay" id="exportModal" style="display:none">
   <div class="modal-box">
@@ -1518,6 +1520,20 @@ window.deleteDept = async function() {
       </div>
     </div>
 
+    <!-- Upload tab -->
+    <div id="manageTabUpload" style="display:none">
+      <div class="modal-section">
+        <div class="modal-section-title">העלה קובץ אקסל חדש</div>
+        <p style="color:var(--rm-text-soft);font-size:13px;margin:0 0 12px">הקובץ חייב להכיל עמודות: מס. עובד, שם משפחה - עברית, שם פרטי - עברית, מחלקה - שם מחלקה</p>
+        <input class="modal-input" type="file" id="uploadExcelFile" accept=".xlsx,.xls" style="padding:8px">
+        <div id="uploadStatus" style="font-size:13px;color:#f59e0b;min-height:20px;margin-top:8px"></div>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn modal-btn-secondary" onclick="closeManageModal()">סגור</button>
+        <button class="modal-btn modal-btn-primary" onclick="uploadExcel()">📂 טען קובץ</button>
+      </div>
+    </div>
+
     <!-- Manage Depts tab -->
     <div id="manageTabDepts" style="display:none">
       <div class="modal-section">
@@ -1548,8 +1564,6 @@ window.deleteDept = async function() {
     </div>
 
 
-    <!-- Upload tab -->
-    <div id="manageTabUpload" style="display:none">
       <div class="modal-section">
         <div class="modal-section-title">העלה קובץ אקסל חדש</div>
         <p style="color:var(--rm-text-soft);font-size:13px;margin:0 0 12px">הקובץ חייב להכיל עמודות: מס. עובד, שם משפחה - עברית, שם פרטי - עברית, מחלקה - שם מחלקה</p>
@@ -1561,7 +1575,6 @@ window.deleteDept = async function() {
         <button class="modal-btn modal-btn-primary" onclick="uploadExcel()">📂 טען קובץ</button>
       </div>
     </div>
-
   </div>
 </div>
 </body>
